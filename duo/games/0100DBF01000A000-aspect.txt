@@ -1,0 +1,124 @@
+# /path/to/work/0100DBF01000A000_build/extract/v0/ExeFS/main
+# build id 74570fa2709ed714006cd65c42a97dc6
+# text 0x967040 bytes, 2464784 instructions, 18457 fdiv, 16:9 constants at ['0xaab614', '0xaf9cf4', '0xaf9d30']
+
+0x5a2314  ldr  score 3  str #0xb0 (projection aspect)
+      0x5a230c  str      s1, [x0, #0xa8]
+      0x5a2310  ldr      s1, [x2, #0xb0]
+   >> 0x5a2314  ldr      s2, [x1, #0xb0]
+      0x5a2318  fsub     s1, s1, s2
+      0x5a231c  str      s1, [x0, #0xb0]
+
+0x5a2350  ldr  score 3  str #0xb0 (projection aspect)
+      0x5a2348  fmul     s3, s3, s0
+      0x5a234c  str      s3, [x0, #0xb8]
+   >> 0x5a2350  ldr      s4, [x1, #0xb0]
+      0x5a2354  fadd     s1, s1, s4
+      0x5a2358  str      s1, [x0, #0xb0]
+
+0x8d5f28  ldr  score 3  str #0xb0 (projection aspect)
+      0x8d5f20  fmul     s23, s21, s20
+      0x8d5f24  str      s23, [x1, #0xa0]
+   >> 0x8d5f28  ldr      s20, [x2, #0x2c]
+      0x8d5f2c  fmul     s20, s22, s20
+      0x8d5f30  str      s20, [x1, #0xb0]
+
+0x8f29a8  ldr  score 3  str #0xb0 (projection aspect)
+      0x8f29a0  fmul     s23, s21, s20
+      0x8f29a4  str      s23, [x1, #0xa0]
+   >> 0x8f29a8  ldr      s20, [x2, #0x2c]
+      0x8f29ac  fmul     s20, s22, s20
+      0x8f29b0  str      s20, [x1, #0xb0]
+
+0x129998  ldr  score 2  str #0xac before (tangent)
+      0x129990  ldr      s6, [x19, #0xcc]
+      0x129994  str      s2, [x19, #0xac]
+   >> 0x129998  ldr      s17, [x9, #0x1c]
+      0x12999c  fmul     s18, s6, v7.s[1]
+      0x1299a0  fmul     s17, s17, s18
+
+0x8c6f58  ldr  score 2  str #0xac before (tangent)
+      0x8c6f50  zip1     v1.4s, v30.4s, v31.4s
+      0x8c6f54  str      s0, [x19, #0xac]
+   >> 0x8c6f58  ldr      s0, [x21, #0x18]
+      0x8c6f5c  fmul     s19, s11, s0
+      0x8c6f60  fmul     s0, s11, s19
+
+0x129990  ldr  score 1  str #0xac (tangent)
+      0x129988  fmul     s16, s16, v7.s[2]
+      0x12998c  fmul     s2, s6, s2
+   >> 0x129990  ldr      s6, [x19, #0xcc]
+      0x129994  str      s2, [x19, #0xac]
+      0x129998  ldr      s17, [x9, #0x1c]
+
+0x4fd76c  ldr  score 1  str #0xac (tangent)
+      0x4fd764  ldrh     w9, [x8, #0x34]
+      0x4fd768  add      x8, x8, x9
+   >> 0x4fd76c  ldr      s1, [x19, #0x164]
+      0x4fd770  ldr      s2, [x8, #0xac]
+      0x4fd774  str      s1, [x8, #0xac]
+
+0x4fd770  ldr  score 1  str #0xac (tangent)
+      0x4fd768  add      x8, x8, x9
+      0x4fd76c  ldr      s1, [x19, #0x164]
+   >> 0x4fd770  ldr      s2, [x8, #0xac]
+      0x4fd774  str      s1, [x8, #0xac]
+      0x4fd778  fcmp     s2, s1
+
+0x4fd97c  ldr  score 1  str #0xac (tangent)
+      0x4fd974  ldrh     w9, [x8, #0x34]
+      0x4fd978  add      x8, x8, x9
+   >> 0x4fd97c  ldr      s2, [x8, #0xac]
+      0x4fd980  str      s1, [x8, #0xac]
+      0x4fd984  fcmp     s2, s1
+
+0x4ff7e4  ldr  score 1  str #0xac (tangent)
+      0x4ff7dc  ldrh     w9, [x8, #0x34]
+      0x4ff7e0  add      x8, x8, x9
+   >> 0x4ff7e4  ldr      s1, [x8, #0xac]
+      0x4ff7e8  str      s0, [x8, #0xac]
+      0x4ff7ec  fcmp     s1, s0
+
+0x503f84  ldr  score 1  str #0xac (tangent)
+      0x503f7c  ldrh     w9, [x8, #0x34]
+      0x503f80  add      x8, x8, x9
+   >> 0x503f84  ldr      s5, [x8, #0xac]
+      0x503f88  str      s3, [x8, #0xac]
+      0x503f8c  fcmp     s5, s3
+
+0x50a4b4  ldr  score 1  str #0xac (tangent)
+      0x50a4ac  ldrh     w9, [x8, #0x34]
+      0x50a4b0  add      x8, x8, x9
+   >> 0x50a4b4  ldr      s1, [x8, #0xac]
+      0x50a4b8  str      s0, [x8, #0xac]
+      0x50a4bc  fcmp     s1, s0
+
+0x50c260  ldr  score 1  str #0xac (tangent)
+      0x50c258  ldrh     w9, [x8, #0x34]
+      0x50c25c  add      x8, x8, x9
+   >> 0x50c260  ldr      s2, [x8, #0xac]
+      0x50c264  str      s1, [x8, #0xac]
+      0x50c268  fcmp     s2, s1
+
+0x518b80  ldr  score 1  str #0xac (tangent)
+      0x518b78  ldrh     w9, [x8, #0x34]
+      0x518b7c  add      x8, x8, x9
+   >> 0x518b80  ldr      s2, [x8, #0xac]
+      0x518b84  str      s1, [x8, #0xac]
+      0x518b88  fcmp     s2, s1
+
+0x519ac8  ldr  score 1  str #0xac (tangent)
+      0x519ac0  ldrh     w9, [x8, #0x34]
+      0x519ac4  add      x8, x8, x9
+   >> 0x519ac8  ldr      s0, [x8, #0xac]
+      0x519acc  str      s8, [x8, #0xac]
+      0x519ad0  fcmp     s0, s8
+
+0x51cbe0  ldr  score 1  str #0xac (tangent)
+      0x51cbd8  ldrh     w9, [x8, #0x34]
+      0x51cbdc  add      x8, x8, x9
+   >> 0x51cbe0  ldr      s1, [x8, #0xac]
+      0x51cbe4  str      s0, [x8, #0xac]
+      0x51cbe8  fcmp     s1, s0
+
+# 17 candidate(s) shown of 18457 fdiv/ldr

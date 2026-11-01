@@ -1,0 +1,33 @@
+{
+  "devices": [
+    {
+      "device_id": "duo",
+      "device_name": "iPhone Duo",
+      "slots": 3,
+      "apps": [
+        {
+          "bundle_id": "org.nxnativeduo.moss",
+          "title": "Moss Kingdom",
+          "installed_at": "2026-10-24T10:00:00Z",
+          "expires_at": "2026-11-06T10:00:00Z"
+        },
+        {
+          "bundle_id": "org.nxnativeduo.harbor",
+          "title": "Harbor Lights",
+          "installed_at": "2026-10-24T10:00:00Z",
+          "expires_at": "2026-11-01T10:00:00Z"
+        }
+      ],
+      "free_bytes": 65000000000,
+      "weekly_app_ids_left": 7
+    },
+    {
+      "device_id": "pro",
+      "device_name": "iPhone 16 Pro",
+      "slots": 3,
+      "apps": [],
+      "free_bytes": 65000000000,
+      "weekly_app_ids_left": 7
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "game": "Tidewalker",
+  "phone": "iPhone 16 Pro",
+  "picture": "Original shape",
+  "fraction": 0.68,
+  "elapsed": 185,
+  "stages": [
+    {
+      "id": "build",
+      "title": "Build the app for the phone",
+      "status": "done",
+      "elapsed": 108
+    },
+    {
+      "id": "install",
+      "title": "Install on iPhone 16 Pro",
+      "status": "done",
+      "elapsed": 31
+    },
+    {
+      "id": "copy",
+      "title": "Copying the game to the phone\u2026",
+      "status": "active",
+      "detail": "1.6 of 4.2 GB \u00b7 24 MB/s over the cable",
+      "fraction": 0.38,
+      "eta": "1m 50s"
+    }
+  ],
+  "copy": {
+    "done_bytes": 1717986918,
+    "total_bytes": 4509715660,
+    "bytes_per_second": 25165824
+  },
+  "slots_after": 1,
+  "room_after_bytes": 60700000000,
+  "log": [
+    "[00:01:48] install: installed on iPhone 16 Pro",
+    "[00:02:19] copy: 1.6 of 4.2 GB \u00b7 24 MB/s over the cable"
+  ]
+}

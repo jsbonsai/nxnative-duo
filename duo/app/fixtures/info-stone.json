@@ -1,0 +1,42 @@
+{
+  "game": {
+    "title": "0100000000000002",
+    "name": "Stone & Sky",
+    "publisher": "Fernhill Studio",
+    "version": "1.0.2",
+    "icon": null,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc",
+    "bytes": 7100000000
+  },
+  "cartridge": [
+    {
+      "title": "0100000000000002",
+      "name": "Stone & Sky"
+    },
+    {
+      "title": "0100000000000006",
+      "name": "Night Courier"
+    }
+  ],
+  "title_id": "0100000000000002",
+  "base": {
+    "file": "~/Games/Stone & Sky/stone-and-sky.xci",
+    "kind": "application",
+    "display_version": "1.0.0",
+    "name": "Stone & Sky"
+  },
+  "update": null,
+  "updates": [],
+  "dlc": [],
+  "duo": {
+    "state": "none"
+  },
+  "support": {
+    "state": "unknown",
+    "versions": []
+  },
+  "problems": [
+    "not part of this game: stone-update-1.3.0.nsp"
+  ],
+  "keys": "~/Documents/prod.keys"
+}

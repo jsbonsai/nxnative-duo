@@ -1,0 +1,1609 @@
+#!/usr/bin/env python3
+"""duo — put your own Switch games on the iPhone Duo.
+
+    duo doctor [--json]                         what this Mac still needs; every item says how it gets fixed
+    duo fix <item>                              fix one doctor item for you (tools, .iso (ps2) tools, .NET, Python, Xcode setup)
+    duo info [--keys K] FILE... [--json]        what the files are: name, version, banner, Duo support (about a second)
+    duo info GAME.iso [--json]                  the same card for an .iso (ps2) game (serial, region, size, support)
+    duo build [--keys K] FILE... [--duo on|off] [--install] [--device UDID] [--progress lines|json]
+    duo ps2 info GAME.iso [--json]              what an .iso (ps2) game is, in the app's card shape
+    duo ps2 build --iso GAME.iso [--game SERIAL] [--out DIR] [--install] [--device UDID]
+                  [--bios PATH] [--setting K=V] [--progress lines|json]
+    duo keys [PATH]                             remember prod.keys (checked first), or show the one in use
+    duo patch add FILE|ZIP | list | remove NAME  Duo patch packs (duo/patches/README.md)
+    duo status                                  the Duo patch packs in use
+
+FILE is any .nsp / .xci of ONE game: its base, its update, its DLC, in any order. prod.keys is found by itself
+(the folders the usual Switch tools use, and the folders above the game file); --keys overrides and is remembered.
+An .iso (ps2) game goes through `duo ps2` (or plain `duo info`, which tells the two apart): the .iso pipeline is the
+ps2-duo checkout this folder sits beside — `DUO_PS2_ROOT` picks another, and `duo doctor` shows its missing pieces.
+
+The picture: every build plays the game at its own shape (letterbox, nxnative's tested default); crop and stretch
+are one tap away in the in-game menu. --duo on (experimental, opt-in) adds the per-game camera patch for games that
+have one (duo/games.tsv; checked on a device: duo/verified.tsv) when installing to an iPhone Duo: the 3D world then
+fills the inner screen at the right proportions, with Stretch as that build's default fill.
+
+Runs on the macOS Python 3.9 in /usr/bin; the build itself runs in the Python environment `duo fix python` makes.
+"""
+import argparse
+import glob
+import hashlib
+import json
+import os
+import plistlib
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))          # the repo
+HOME = os.path.expanduser('~')
+SUPPORT = os.path.join(HOME, 'Library', 'Application Support', 'Duo Builder')
+CONFIG = os.path.join(SUPPORT, 'config.json')
+VENV = os.path.join(SUPPORT, 'python')
+TOOLS = os.path.join(SUPPORT, 'tools')
+TOOL_PATHS = ['/opt/homebrew/bin', '/usr/local/bin', '/usr/local/share/dotnet', os.path.join(HOME, '.dotnet')]
+PY_MODULES = ['lz4.block', 'capstone', 'fontTools']                           # + zstd (built in from 3.14, else backports.zstd)
+DUO_ASPECT = '2853:2007'                                                      # the inner screen, landscape (pixels)
+PACKAGE_EXT = ('.nsp', '.xci')
+ISO_EXT = ('.iso',)                                                           # an .iso (ps2) game image
+PS2_BUILD_SPACE = 12 * 2**30                                                  # generated code + compiler output, per game
+PS2_COPY_HEADROOM = 512 * 2**20                                               # beyond the image itself, on the phone
+PS2_STAGES = ['reading-disc', 'reading-executable', 'translating', 'exploring', 'compiling-vu', 'building', 'vu-aot',
+              'linking', 'verifying']                                         # docs/ARCHITECTURE.md §7.2, in order
+PS2_SUPPORT = {'verified': 'plays', 'provisional': 'boots (still being brought up)', 'new': 'new here'}
+JSON_OUT = False
+
+
+# ---------------------------------------------------------------------------------------------------------- output
+
+def emit(ev, **fields):
+    """One progress event, in the NSP script's protocol (docs/frontends.md), or a plain line."""
+    if JSON_OUT:
+        fields.update(ev=ev, t=round(time.time(), 3))
+        sys.stdout.write(json.dumps(fields) + '\n')
+        sys.stdout.flush()
+    elif ev == 'say':
+        print(fields.get('msg', ''), flush=True)
+    elif ev == 'stage':
+        print('[{}/{}] {}'.format(fields.get('k'), fields.get('n'), fields.get('name')), flush=True)
+
+
+def say(msg):
+    emit('say', msg=msg)
+
+
+def fail(msg, code=1):
+    """Stop with one sentence that says what to do; JSON mode marks it as the error line."""
+    emit('say', msg='[RED] ' + msg) if JSON_OUT else print('error: ' + msg, file=sys.stderr, flush=True)
+    sys.exit(code)
+
+
+def env_with_tools():
+    env = dict(os.environ)
+    env['PATH'] = os.pathsep.join(TOOL_PATHS + [env.get('PATH', '/usr/bin:/bin:/usr/sbin:/sbin')])
+    dotnet_root = os.path.join(HOME, '.dotnet')
+    if 'DOTNET_ROOT' not in env and os.path.isfile(os.path.join(dotnet_root, 'dotnet')):
+        env['DOTNET_ROOT'] = dotnet_root
+    return env
+
+
+def capture(cmd, timeout=60, env=None):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=env or env_with_tools())
+        return p.returncode, p.stdout, p.stderr
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, '', str(e)
+
+
+def which(tool):
+    return shutil.which(tool, path=env_with_tools()['PATH'])
+
+
+def load_config():
+    try:
+        with open(CONFIG) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_config(**kv):
+    c = load_config()
+    c.update(kv)
+    os.makedirs(SUPPORT, exist_ok=True)
+    with open(CONFIG, 'w') as f:
+        json.dump(c, f, indent=2)
+
+
+# ---------------------------------------------------------------------------------------------------------- keys
+
+def key_candidates(near=()):
+    """Where prod.keys usually is: the remembered path, the Switch tools' folders, and the folders above a game file."""
+    c = []
+    if load_config().get('keys'):
+        c.append(load_config()['keys'])
+    c += [os.path.join(HOME, '.switch', 'prod.keys')]
+    for app in ('Ryujinx', 'yuzu', 'suyu', 'sudachi', 'citron', 'eden', 'torzu'):
+        c += [os.path.join(HOME, 'Library', 'Application Support', app, 'system', 'prod.keys'),
+              os.path.join(HOME, 'Library', 'Application Support', app, 'keys', 'prod.keys')]
+    for f in near:
+        d = os.path.dirname(os.path.abspath(f))
+        for _ in range(4):
+            c += [os.path.join(d, 'prod.keys'), os.path.join(d, 'keys', 'prod.keys')]
+            d = os.path.dirname(d)
+    seen, out = set(), []
+    for p in c:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+
+
+def keys_ok(path):
+    """A prod.keys text file with the header key (the one key every package needs)."""
+    try:
+        with open(path, errors='replace') as f:
+            return any(re.match(r'\s*header_key\s*=\s*[0-9a-fA-F]{64}', line) for line in f)
+    except OSError:
+        return False
+
+
+def find_keys(explicit=None, near=()):
+    if explicit:
+        if not keys_ok(explicit):
+            fail('this is not a prod.keys file (no header_key in it): ' + explicit)
+        save_config(keys=os.path.abspath(explicit))
+        return os.path.abspath(explicit)
+    for p in key_candidates(near):
+        if os.path.isfile(p) and keys_ok(p):
+            return p
+    return None
+
+
+# ---------------------------------------------------------------------------------------------------------- nx_extract
+
+def dotnet():
+    for p in [os.path.join(HOME, '.dotnet', 'dotnet'), '/usr/local/share/dotnet/dotnet', '/opt/homebrew/bin/dotnet', which('dotnet')]:
+        if p and os.path.isfile(p):
+            return p
+    return None
+
+
+def nx_extract():
+    """nx_extract built once per source change into Application Support (seconds after the first build)."""
+    src = os.path.join(ROOT, 'dm', 'tools', 'nx_extract')
+    h = hashlib.sha256()
+    for name in sorted(os.listdir(src)):
+        if name.endswith(('.cs', '.csproj')):
+            with open(os.path.join(src, name), 'rb') as f:
+                h.update(name.encode() + f.read())
+    out = os.path.join(TOOLS, 'nx_extract-' + h.hexdigest()[:12])
+    exe = os.path.join(out, 'nx_extract')
+    if os.path.isfile(exe):
+        return exe
+    dn = dotnet()
+    if not dn:
+        fail('the .NET SDK is missing: run `duo fix dotnet` (Duo Builder: Setup)')
+    tmp = tempfile.mkdtemp(prefix='nx_extract_')
+    rc, so, se = capture([dn, 'build', src, '-c', 'Release', '-o', tmp, '-v', 'quiet', '-nologo'], timeout=600)
+    if rc or not os.path.isfile(os.path.join(tmp, 'nx_extract')):
+        fail('could not build nx_extract: ' + ((se or so).strip().splitlines() or ['?'])[-1])
+    os.makedirs(TOOLS, exist_ok=True)
+    shutil.rmtree(out, ignore_errors=True)
+    shutil.move(tmp, out)
+    return exe
+
+
+def package_info(keys, path, icon_dir, title_id=None):
+    """One package; title_id picks the application on a cartridge that holds several (NX_TITLE, upstream PR #701)."""
+    key = os.path.abspath(path) + (title_id or '')
+    icon = os.path.join(icon_dir, hashlib.sha1(key.encode()).hexdigest()[:16] + '.jpg')
+    env = env_with_tools()
+    if title_id and path.lower().endswith(('.xci', '.xcz')):
+        env['NX_TITLE'] = title_id
+    rc, so, se = capture([nx_extract(), keys, '--info', path, icon], timeout=120, env=env)
+    line = next((l for l in reversed(so.splitlines()) if l.startswith('{')), None)
+    if not line:
+        return {'file': path, 'error': read_error(se + '\n' + so)}
+    d = json.loads(line)
+    d['file'] = os.path.abspath(path)
+    d['bytes'] = os.path.getsize(path)
+    return d
+
+
+def read_error(text):
+    """What nx_extract's failure means for the player, in one sentence (never a stack trace)."""
+    m = re.search(r'Key Name:\s*(\S+)', text)
+    if 'MissingKeyException' in text and m:
+        gen = re.search(r'_([0-9a-fA-F]{2})$', m.group(1))
+        have = sorted({int(x, 16) for x in re.findall(r'^master_key_([0-9a-fA-F]{2})\s*=', open(find_keys() or os.devnull).read(), re.M)}) \
+            if find_keys() else []
+        newest = 'master_key_{:02x}'.format(have[-1]) if have else 'none'
+        need = 'master_key_' + gen.group(1).lower() if gen else m.group(1)
+        return ('your prod.keys is too old for this game: it needs {} and yours stops at {}. Dump prod.keys again from a '
+                'Switch on recent firmware, then drop the new file on the window'.format(need, newest))
+    if 'MissingKeyException' in text:
+        return 'your prod.keys is missing a key this game needs: dump prod.keys again from a Switch on recent firmware'
+    if 'hash check' in text or 'damaged' in text.lower():
+        return 'the file is damaged or incomplete (an interrupted copy or download): copy or download it again'
+    lines = [l.strip() for l in text.splitlines() if l.strip() and not l.strip().startswith('at ')]
+    first = next((l for l in lines if 'exception' in l.lower()), lines[0] if lines else 'could not be read')
+    return re.sub(r'^Unhandled exception\.\s*', '', first)
+
+
+# ---------------------------------------------------------------------------------------------------------- registry
+
+PACK_DIRS = [os.path.join(ROOT, 'duo', 'patches'), os.path.join(SUPPORT, 'patches')]
+PACK_FIELDS = ('format', 'name', 'game', 'version', 'title_id', 'main_build_id', 'camera', 'author', 'checked')
+
+
+def check_pack(p):
+    """Why a parsed pack breaks the contract (duo/patches/README.md), or None."""
+    missing = [k for k in PACK_FIELDS if k not in p]
+    if missing:
+        return 'missing: ' + ', '.join(missing)
+    if p['format'] != 1:
+        return 'format {!r} (this version reads format 1)'.format(p['format'])
+    if not re.fullmatch(r'[0-9a-fA-F]{32}', str(p['main_build_id'])):
+        return 'main_build_id must be 32 hex digits'
+    if not re.fullmatch(r'[0-9a-fA-F]{16}', str(p['title_id'])):
+        return 'title_id must be 16 hex digits'
+    cam = p['camera'] if isinstance(p['camera'], dict) else {}
+    sites, const = cam.get('sites') or [], cam.get('const')
+    if not sites and const in (None, '', '-'):
+        return 'camera needs sites or const'
+    bad = [x for x in sites if not re.fullmatch(r'~?0x[0-9a-fA-F]+', str(x))]
+    if bad:
+        return 'camera sites must be hex offsets (~ for height/width): ' + ', '.join(map(str, bad))
+    return None
+
+
+def packs():
+    """[(file, pack)] every valid pack, shipped ones first; a broken file is reported, not used."""
+    out = []
+    for d in PACK_DIRS:
+        for f in sorted(glob.glob(os.path.join(d, '*.duopatch.json'))):
+            try:
+                with open(f, encoding='utf-8') as h:
+                    p = json.load(h)
+            except (OSError, ValueError):
+                continue
+            if check_pack(p) is None:
+                out.append((f, p))
+    return out
+
+
+def duo_support(build_id):
+    """`available` when a pack names this exact main build, else `none`."""
+    for f, p in packs():
+        if build_id and p['main_build_id'].lower() == build_id.lower():
+            return {'state': 'available', 'name': p['name'], 'author': p['author'], 'checked': p['checked'], 'file': f,
+                    'source': 'shipped' if f.startswith(PACK_DIRS[0]) else 'added'}
+    return {'state': 'none', 'note': 'no Duo patch pack for this build'}
+
+
+def engine_support(title, build_id):
+    """How far nxnative has brought this game up: `tested` (a profile registers this exact main build), `other-version` (a profile
+    exists for the game, not for this build: the pipeline derives one, usually fine), `provisional` (the profile itself is still a
+    provisional guess), `unknown` (no profile: the pipeline guesses one; such games often stop before their first frame)."""
+    d = os.path.join(ROOT, 'dm', 'games', (title or '').upper())
+    tsv = os.path.join(d, 'game.tsv')
+    if not title or not os.path.isfile(tsv):
+        return {'state': 'unknown', 'versions': []}
+    versions, builds, provisional = [], set(), False
+    with open(tsv, errors='replace') as f:
+        for line in f:
+            c = line.rstrip('\n').split('\t')
+            if c[0] == 'build' and len(c) > 3:
+                versions.append(c[2])
+                builds.update(x.split('=', 1)[1] for x in c[3:] if x.startswith('main='))
+            elif line.startswith('#') and 'provisional profile' in line and 'Started from' not in line:
+                provisional = True
+    if build_id and build_id in builds:
+        state = 'tested'
+    else:
+        state = 'provisional' if provisional else 'other-version'
+    return {'state': state, 'versions': versions}
+
+
+# ---------------------------------------------------------------------------------------------------------- info
+
+def describe(files, keys, title_id=None):
+    """The dropped packages as one game: base, newest update, DLC, the main that will run, its Duo support. A cartridge with
+    several games reads the one title_id names, else the one a dropped update belongs to, else its first."""
+    icon_dir = os.path.join(SUPPORT, 'icons')
+    os.makedirs(icon_dir, exist_ok=True)
+    pk = [package_info(keys, f, icon_dir, title_id) for f in files]
+    apps = next((p.get('applications') for p in pk if p.get('kind') == 'application' and len(p.get('applications') or []) > 1), None)
+    if apps and not title_id:
+        fams = {int(p['title'], 16) & ~0xfff for p in pk if p.get('kind') == 'patch'}
+        pick = next((a for a in apps if int(a, 16) in fams), None)
+        if pick and pick != next(p['title'] for p in pk if p.get('kind') == 'application'):
+            return describe(files, keys, pick)
+    errs = [p for p in pk if 'error' in p]
+    if errs and len({p['error'] for p in errs}) == 1:
+        problems = [errs[0]['error']]
+    else:
+        problems = ['{}: {}'.format(os.path.basename(p['file']), p['error']) for p in errs]
+    good = [p for p in pk if 'error' not in p]
+    bases = [p for p in good if p['kind'] == 'application']
+    updates = sorted((p for p in good if p['kind'] == 'patch'), key=lambda p: p['version'])
+    dlc = [p for p in good if p['kind'] == 'addon']
+    family = None
+    if bases:
+        family = int(bases[0]['title'], 16)
+    elif updates:
+        family = int(updates[0]['title'], 16) & ~0xfff
+    def belongs(p):
+        t = int(p['title'], 16)
+        return family is not None and (t & ~0xfff == family or (t & ~0xfff) - 0x1000 == family)
+    stray = [p for p in good if not belongs(p)]
+    if len(bases) > 1:
+        problems.append('more than one base game: drop one game at a time')
+    if stray:   # left out, never counted: another game's update must not name or version this one
+        same_cart = {int(a, 16) & ~0xfff for a in (apps or [])}
+        foreign = [p for p in stray if int(p['title'], 16) & ~0xfff not in same_cart]   # another game on the same cartridge is fine
+        if foreign:
+            problems.append('not part of this game: ' + ', '.join(os.path.basename(p['file']) for p in foreign))
+        updates = [p for p in updates if belongs(p)]
+        dlc = [p for p in dlc if belongs(p)]
+    if not bases and good:
+        problems.append('no base game yet: add the game itself (.nsp or .xci), not only its update')
+    base = bases[0] if bases else None
+    update = updates[-1] if updates else None
+    lead = update or base
+    build_id = (update or {}).get('main_build_id') or (base or {}).get('main_build_id')
+    game = None
+    if lead:
+        game = {'title': (base or lead)['title'] if base else '{:016x}'.format(family), 'name': lead.get('name') or (base or {}).get('name'),
+                'publisher': lead.get('publisher'), 'version': lead.get('display_version'),
+                'icon': (update or {}).get('icon') or (base or {}).get('icon'), 'build_id': build_id,
+                'bytes': sum(p['bytes'] for p in good)}
+    cartridge = []
+    if apps:    # every game on the cartridge, for a picker
+        for a in apps:
+            if base and a == base['title']:
+                cartridge.append({'title': a, 'name': base.get('name')})
+            else:
+                other = package_info(keys, base['file'], icon_dir, a) if base else {}
+                cartridge.append({'title': a, 'name': other.get('name')})
+    return {'game': game, 'base': base, 'update': update, 'updates': updates, 'dlc': dlc, 'cartridge': cartridge,
+            'title_id': base['title'] if base and apps else None,
+            'duo': duo_support(build_id), 'support': engine_support(game and game['title'], build_id),
+            'problems': problems, 'keys': keys}
+
+
+def expand(paths):
+    """Files as given; a folder means the packages directly inside it."""
+    out = []
+    for p in paths:
+        if os.path.isdir(p):
+            out += sorted(os.path.join(p, f) for f in os.listdir(p) if f.lower().endswith(PACKAGE_EXT) and not f.startswith('._'))
+        elif p.lower().endswith(PACKAGE_EXT):
+            out.append(p)
+        else:
+            fail('not a Switch game file (.nsp or .xci): ' + p, 2)
+    if not out:
+        fail('no .nsp or .xci files given', 2)
+    return out
+
+
+def cmd_info(a):
+    if any(f.lower().endswith(ISO_EXT) for f in a.files):
+        return cmd_ps2_info(a)          # an .iso (ps2) game: its own card, never the package reader
+    files = expand(a.files)
+    keys = find_keys(a.keys, files)
+    if not keys:
+        fail('prod.keys not found: add it once (Duo Builder: drop it on the window; CLI: --keys PATH)')
+    d = describe(files, keys, a.title_id)
+    if a.json:
+        print(json.dumps(d, indent=2))
+        return
+    g = d['game'] or {}
+    print('{}  {}  ({})'.format(g.get('name'), g.get('version'), g.get('title')))
+    print('  build {}  —  Duo: {}'.format(g.get('build_id'), d['duo']['state']))
+    for p in d['problems']:
+        print('  ! ' + p)
+
+
+# ---------------------------------------------------------------------------------------------------------- ps2
+# An .iso (ps2) game is described and built by the pipeline in the ps2-duo checkout beside this one
+# (tools/ps2info, tools/ps2build, ios/build-ios.sh, inspected from docs/ARCHITECTURE.md §7). This wrapper owns the
+# card the app draws, the events the app follows, and the phone half: Documents/ps2.iso and the app.
+
+def ps2_root():
+    """The pipeline's checkout: DUO_PS2_ROOT, the remembered folder, then the ps2-duo folder beside this one."""
+    for p in (os.environ.get('DUO_PS2_ROOT'), load_config().get('ps2_root'),
+              os.path.join(os.path.dirname(ROOT), 'ps2-duo'), os.path.join(ROOT, 'ps2-duo')):
+        if p and os.path.isfile(os.path.join(p, 'tools', 'ps2info')) and os.path.isfile(os.path.join(p, 'tools', 'ps2build')):
+            return os.path.abspath(p)
+    return None
+
+
+def ps2_root_or_fail():
+    root = ps2_root()
+    if not root:
+        fail('the .iso (ps2) pipeline is not on this Mac: put the ps2-duo folder beside this one, or set DUO_PS2_ROOT to it')
+    return root
+
+
+def ps2_tool(rel):
+    path = os.path.join(ps2_root_or_fail(), rel)
+    if not os.path.isfile(path):
+        fail('the .iso (ps2) pipeline is incomplete: {} is missing (DUO_PS2_ROOT={})'.format(path, ps2_root()))
+    return path
+
+
+def only_iso(files):
+    """The one .iso among the dropped files, or a sentence about why they cannot be mixed."""
+    isos = [f for f in files if f.lower().endswith(ISO_EXT)]
+    if len(isos) != len(files):
+        fail('one game at a time: an .iso (ps2) cannot be built together with .nsp / .xci files', 2)
+    if len(isos) > 1:
+        fail('one .iso (ps2) at a time: drop the game\'s own image', 2)
+    return os.path.abspath(isos[0])
+
+
+PS2_INFO_ERRORS = {
+    'iso_missing': 'that .iso is not there any more: check the path (or reconnect the drive it is on)',
+    'not_iso9660': 'this is not a game disc image: a .bin / .cue rip or a BIOS dump cannot be played — make an .iso of the game disc',
+    'no_system_cnf': 'this image has no SYSTEM.CNF, so it is not a bootable game disc (an .iso of a data disc?)',
+    'no_boot2': 'SYSTEM.CNF names no game executable: the image is not a complete game disc',
+    'no_boot_elf': 'the disc names a game executable it does not contain: the image is damaged or an incomplete rip',
+}
+
+
+def ps2_info(path):
+    """tools/ps2info --json, parsed; its error codes become one sentence with the thing to do."""
+    tool = ps2_tool(os.path.join('tools', 'ps2info'))
+    rc, so, se = capture([tool, '--json', path], timeout=120)
+    data = None
+    try:
+        data = json.loads(so)           # success is a pretty-printed document; an error is one line of JSON
+    except ValueError:
+        at = so.find('{')
+        try:
+            data = json.loads(so[at:]) if at >= 0 else None
+        except ValueError:
+            data = None
+    if not data:
+        if rc == 127:
+            fail('the .iso (ps2) pipeline could not run {}: check that folder, or set DUO_PS2_ROOT'.format(tool))
+        fail('could not read the image: ' + ((se or so).strip().splitlines() or ['no output from ps2info'])[-1])
+    if data.get('error'):
+        fail(PS2_INFO_ERRORS.get(data['error'], data.get('message') or 'the image could not be read'), 2 if rc == 2 else 1)
+    return data
+
+
+def ps2_card(d, iso):
+    """`duo info`'s card shape for an .iso (ps2): the shared fields where they mean the same, ps2info's own under `ps2`."""
+    support = d.get('support') or 'new'
+    return {
+        'game': {'title': d.get('serial'), 'name': d.get('title') or d.get('serial'), 'publisher': None, 'version': None,
+                 'icon': None, 'build_id': None, 'bytes': d.get('size_bytes')},
+        'base': {'file': iso, 'kind': 'iso', 'name': d.get('title')},
+        'update': None, 'updates': [], 'dlc': [], 'cartridge': [], 'title_id': None,
+        'duo': {'state': 'none', 'note': '.iso (ps2) builds carry their own picture settings; Duo full screen is a .nsp / .xci patch'},
+        'support': {'state': support, 'versions': [], 'note': d.get('support_notes')},
+        'problems': [],
+        'ps2': d,
+    }
+
+
+def print_ps2_card(d):
+    gb = (d.get('size_bytes') or 0) / 2**30
+    print('{}  ({}, {})'.format(d.get('title') or d.get('serial'), d.get('serial'), d.get('region')))
+    print('  {:.1f} GB, {}  —  {}'.format(gb, 'DVD-9' if (d.get('layers') or 1) > 1 else 'single layer',
+                                          PS2_SUPPORT.get(d.get('support'), d.get('support'))))
+    if d.get('support_notes'):
+        print('  ' + d['support_notes'])
+    if d.get('bios') == 'required':
+        print('  ! this title needs a BIOS dump, which the runtime cannot use yet: it may not get past its first screens')
+    elif d.get('bios') == 'optional':
+        print('  BIOS: optional for this title')
+
+
+def cmd_ps2_info(a):
+    iso = only_iso(a.files)
+    d = ps2_info(iso)
+    if a.json:
+        print(json.dumps(ps2_card(d, iso), indent=2))
+        return
+    print_ps2_card(d)
+
+
+def free_bytes(path):
+    """Free bytes on the volume that holds (or would hold) path; None when it cannot be asked."""
+    p = os.path.abspath(path)
+    while not os.path.isdir(p) and os.path.dirname(p) != p:
+        p = os.path.dirname(p)
+    try:
+        return shutil.disk_usage(p).free
+    except OSError:
+        return None
+
+
+def ps2_volume():
+    """Where .iso builds go: DUO_PS2_OUT, a mounted */ps2-duo folder (the pipeline's own convention), else its out/."""
+    env = os.environ.get('DUO_PS2_OUT')
+    if env:
+        return os.path.abspath(env)
+    for d in sorted(glob.glob('/Volumes/*/ps2-duo')):
+        if os.path.isdir(d):
+            return d
+    return os.path.join(ps2_root() or ROOT, 'out')
+
+
+def ps2_out_default(serial):
+    return os.path.join(ps2_volume(), (serial or 'game').strip().replace('/', '_'))
+
+
+def ps2_build_argv(root, iso, serial, out, settings=(), bios=None):
+    """tools/ps2build's command line (docs/ARCHITECTURE.md §7.2): JSON events on stdout, everything else on stderr."""
+    cmd = [os.path.join(root, 'tools', 'ps2build'), '--game', serial, '--iso', iso, '--out', out, '--progress', 'json']
+    if bios:
+        cmd += ['--bios', os.path.abspath(bios)]
+    for kv in settings:
+        cmd += ['--setting', kv]
+    return cmd
+
+
+def ps2_progress_event(ev, seen):
+    """One ps2build event as the app's ProgressEvent line (docs/frontends.md), nested under our step 2 (`sub`)."""
+    kind, stage = ev.get('event'), ev.get('stage') or ''
+    if stage not in PS2_STAGES:
+        return None
+    k = PS2_STAGES.index(stage) + 1
+    if kind == 'stage' and stage not in seen:
+        seen.add(stage)
+        return {'ev': 'stage', 'k': k, 'n': len(PS2_STAGES), 'name': stage, 'step': '', 'sub': True}
+    if kind == 'progress':
+        return {'ev': 'progress', 'k': k, 'n': len(PS2_STAGES), 'name': stage, 'note': ev.get('message', ''), 'sub': True}
+    return None
+
+
+def emit_sub(fields):
+    """A forwarded pipeline event: JSON for the app, nothing extra for a person (the pipeline's own prose is said)."""
+    if not JSON_OUT:
+        return
+    fields = dict(fields)
+    fields['t'] = round(time.time(), 3)
+    sys.stdout.write(json.dumps(fields) + '\n')
+    sys.stdout.flush()
+
+
+def ps2_run(cmd, cwd, on_event):
+    """Run ps2build: its NDJSON events go to on_event, its prose (stderr) is said as it arrives."""
+    try:
+        p = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                             env=env_with_tools(), bufsize=1)
+    except OSError as e:
+        fail('the .iso (ps2) pipeline could not start ({}): check that folder, or set DUO_PS2_ROOT'.format(e))
+    def prose():
+        for line in p.stderr:
+            say(line.rstrip())
+    reader = threading.Thread(target=prose, daemon=True)
+    reader.start()
+    for line in p.stdout:
+        line = line.rstrip('\n')
+        if line.startswith('{'):
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                ev = None
+            if ev is not None:
+                on_event(ev)
+                continue
+        if line.strip():
+            say(line)
+    rc = p.wait()
+    reader.join()
+    for stream in (p.stdout, p.stderr):
+        try:
+            stream.close()
+        except (OSError, ValueError):
+            pass
+    return rc
+
+
+PS2_BUILD_ERRORS = {
+    'iso_missing': 'that .iso is not there any more: check the path (or reconnect the drive it is on)',
+    'out_not_writable': 'the build folder could not be created: choose another one with --out (it needs about 12 GB free)',
+    'bios_missing': 'the BIOS file is not there: check the path, or build without --bios',
+    'bios_invalid': 'that is not a BIOS dump: a dump is exactly 4194304 bytes (4 MB)',
+    'bash4_missing': 'the pipeline needs bash 4: run `duo fix ps2-tools` (brew install bash)',
+    'translate_failed': 'the game\'s code could not be translated (the log says where); nothing on this Mac fixes an unsupported game',
+    'vu_aot_failed': 'the VU1 ahead-of-time pass failed; the base capture set stands, so the build continues',
+    'log_empty': 'the pipeline produced no log, so the build cannot be trusted: run it again, and report it if it repeats',
+    'link_failed': 'the translated code would not link (the log says why): run `duo fix ps2-tools` and build again',
+}
+
+
+def ps2_build_failure(code, message, serial=''):
+    """ps2build's documented error codes (docs/ARCHITECTURE.md §7.2) as one sentence with the thing to do."""
+    if code == 'no_profile':
+        return 'this game has no profile in the pipeline yet, so it cannot be built ({}); nothing on this Mac fixes that'.format(
+            serial or 'no serial')
+    if code in PS2_BUILD_ERRORS:
+        return PS2_BUILD_ERRORS[code]
+    if message:
+        return message.strip().splitlines()[-1]
+    return 'the game could not be built (the lines above say where)'
+
+
+def ps2_bundle_id(serial, team):
+    """.iso games get their own app ID: org.nxnativeduo.<team>.ps2.<serial> (docs/ARCHITECTURE.md §7.3)."""
+    override = os.environ.get('DUO_PS2_BUNDLE_ID') or os.environ.get('DUO_BUNDLE_ID')
+    if override:
+        return override
+    clean = re.sub(r'[^a-z0-9]', '', (serial or 'game').lower())
+    return 'org.nxnativeduo.{}.ps2.{}'.format((team or 'local').lower(), clean)
+
+
+def ps2_app_build(root, out, d, device, team, bundle, app_root):
+    """ios/build-ios.sh --generated <out>/generated --metal: the app with the game's translated code, signed."""
+    log = os.path.join(SUPPORT, 'logs', 'ps2-app-{}.log'.format(int(time.time())))
+    os.makedirs(os.path.dirname(log), exist_ok=True)
+    env = env_with_tools()
+    env.update(PS2_BUNDLE_ID=bundle, PS2_TEAM_ID=team or '', PS2_APP_NAME=d.get('title') or d.get('serial') or 'Game')
+    cmd = ['/bin/bash', os.path.join(root, 'ios', 'build-ios.sh'), '--generated', os.path.join(out, 'generated'),
+           '--out', app_root, '--name', env['PS2_APP_NAME'], '--metal']
+    if device:
+        cmd += ['--device', device['udid']]
+    try:
+        with open(log, 'w') as f:
+            p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env)
+            rc = p.wait()
+    except OSError as e:
+        fail('the app could not be built ({}): check the Xcode setup with `duo doctor`'.format(e))
+    text = ''
+    if rc:
+        with open(log, errors='replace') as f:
+            text = f.read()
+        for line in text.splitlines():
+            if ' error: ' in line or line.startswith('error:') or line.startswith('ERROR:'):
+                say(line.strip())
+        say('full log: ' + log)
+    return rc, text, log
+
+
+def ps2_app_path(text, app_root):
+    m = re.search(r'^== app: (.+)$', text, re.M)
+    if m:
+        return m.group(1).strip()
+    p = os.path.join(app_root, 'Build', 'Products', 'Release-iphoneos', 'PS2Duo.app')
+    return p if os.path.isdir(p) else None
+
+
+def ps2_phone_space(udid):
+    """(free bytes, capacity) as the phone reports them. devicectl has no free-space command, so free is None on
+    phones that do not report one and the copy's own failure is what says the phone is full."""
+    os.makedirs(SUPPORT, exist_ok=True)
+    path = os.path.join(SUPPORT, 'device-info-{}.json'.format(os.getpid()))
+    capture(['xcrun', 'devicectl', 'device', 'info', 'details', '--device', udid, '--json-output', path], timeout=60)
+    try:
+        with open(path) as f:
+            raw = json.load(f)
+    except (OSError, ValueError):
+        return None, None
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    found = {}
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                key = k.lower()
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    if 'internalstoragecapacity' in key:
+                        found['capacity'] = int(v)
+                    elif 'free' in key and ('space' in key or 'storage' in key):
+                        found.setdefault('free', int(v))
+                else:
+                    walk(v)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v)
+    walk(raw)
+    free, capacity = found.get('free'), found.get('capacity')
+    if free is not None and (free <= 0 or (capacity and free > capacity)):
+        free = None                 # not a plausible free-space figure: do not act on it
+    return free, capacity
+
+
+def ps2_copy_argv(udid, bundle, iso):
+    """The disc goes to the app's Documents (docs/ARCHITECTURE.md §7.3); the app reads Documents/ps2.iso."""
+    return ['xcrun', 'devicectl', 'device', 'copy', 'to', '--device', udid, '--domain-type', 'appDataContainer',
+            '--domain-identifier', bundle, '--source', iso, '--destination', 'Documents/ps2.iso']
+
+
+def ps2_space_on_phone(device, need):
+    """The copy's free-space check: stop when the phone reports less than `need`; returns None when it reports nothing."""
+    free, _ = ps2_phone_space(device['udid'])
+    if free is not None and free < need:
+        fail('{} has {:.1f} GB free and this game needs {:.1f} GB: delete a game from the phone, then install again'
+             .format(device['name'], free / 2**30, need / 2**30), 2)
+    return free
+
+
+def ps2_copy_failure(text, need):
+    t = text.lower()
+    if 'no space left' in t or 'not enough space' in t or 'enospc' in t or 'disk full' in t or 'insufficient' in t:
+        return ('the phone ran out of space: this game needs {:.1f} GB free; delete a game from the phone, then try again'
+                .format(need / 2**30))
+    if 'domain' in t and 'identifier' in t or 'not found' in t:
+        return 'the app is not installed on the phone any more: install it again'
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    return lines[-1] if lines else 'the phone refused the copy'
+
+
+def ps2_duration(seconds):
+    if seconds >= 60:
+        return '{}m {:02d}s'.format(seconds // 60, seconds % 60)
+    return '{}s'.format(seconds)
+
+
+def cmd_ps2_build(a):
+    global JSON_OUT
+    JSON_OUT = a.progress == 'json'
+    iso = only_iso([a.iso])
+    root = ps2_root_or_fail()
+    ps2_tool(os.path.join('tools', 'ps2build'))
+    n = 6 if a.install else 2
+
+    emit('stage', k=1, n=n, name='Reading the game', step='')
+    d = ps2_info(iso)
+    serial = (a.game or d.get('serial') or '').strip()
+    if not serial:
+        fail('the image does not name a game serial: pass --game SERIAL', 2)
+    name = d.get('title') or serial
+    out = os.path.abspath(a.out) if a.out else ps2_out_default(serial)
+    say('{} ({}, {}) — {:.1f} GB'.format(name, serial, d.get('region'), (d.get('size_bytes') or 0) / 2**30))
+    emit('stage_end', k=1, name='Reading the game', ok=True, summary=name, elapsed=0)
+
+    free = free_bytes(out)
+    if free is not None and free < PS2_BUILD_SPACE:
+        fail('a build needs about 12 GB free where it writes, and {} has {:.1f} GB: free some space, or pass --out DIR on a '
+             'drive with room'.format(out, free / 2**30))
+    for kv in a.setting or []:
+        if '=' not in kv:
+            fail('a setting is KEY=VALUE, for example scale=2; got "{}"'.format(kv), 2)
+    if a.bios and not os.path.isfile(a.bios):
+        fail('the BIOS file is not there: ' + os.path.abspath(a.bios), 2)
+    device = team = bundle = need = None
+    if a.install:       # the phone half is checked now, so an hour of translation is not wasted on a phone that cannot take it
+        device = pick_device(a.device or os.environ.get('DUO_DEVICE'))
+        if not device:
+            fail('no iPhone connected: connect it with a cable, unlock it, then install again')
+        teams = personal_teams()
+        team = teams[0][0] if teams else None
+        # The same gate as the .xci / .nsp path's auto_sign (apple_id_signed_in() and teams): ios/build-ios.sh signs the
+        # app with xcodebuild's automatic signing and has no local-profile fallback, so without an account in Xcode the
+        # build would translate for an hour and then fail at signing. A team on its own is not enough.
+        if not team or not apple_id_signed_in():
+            fail('sign in to Xcode once (Settings › Accounts › +, a free Apple ID works), then install again')
+        bundle = ps2_bundle_id(serial, team)
+        need = os.path.getsize(iso) + PS2_COPY_HEADROOM
+        if ps2_space_on_phone(device, need) is None:
+            say('the phone does not report its free space; the copy needs {:.1f} GB and stops with a message if it does not '
+                'fit'.format(need / 2**30))
+
+    emit('stage', k=2, n=n, name='Rebuilding the game', step='')
+    state = {'error': None, 'done': None, 'seen': set()}
+    def on_event(ev):
+        if ev.get('event') == 'error':
+            state['error'] = ev
+        elif ev.get('event') == 'done':
+            state['done'] = ev
+        line = ps2_progress_event(ev, state['seen'])
+        if line:
+            emit_sub(line)
+    started = time.time()
+    rc = ps2_run(ps2_build_argv(root, iso, serial, out, a.setting or [], a.bios), root, on_event)
+    elapsed = round(time.time() - started)
+    if rc:
+        err = state['error'] or {}
+        fail(ps2_build_failure(err.get('code'), err.get('message', ''), serial), 2 if rc == 2 else 3 if rc == 3 else 1)
+    done = state['done'] or {}
+    verdict = done.get('verdict') or 'none'
+    emit('stage_end', k=2, name='Rebuilding the game', ok=True,
+         summary='verified' if verdict == 'pass' else 'built', elapsed=elapsed)
+    if not a.install:
+        say('Built: ' + (done.get('binary') or out))
+        if verdict == 'fail':
+            say('The automatic check did not pass; the game may still boot on a Mac: ' + out)
+        say('The build is in ' + out)
+        return
+
+    app_root = os.path.join(out, 'app')
+    emit('stage', k=3, n=n, name='Building the app', step='PS2Duo')
+    started = time.time()
+    rc, text, log = ps2_app_build(root, out, d, device, team, bundle, app_root)
+    if rc and app_id_budget_spent(text):
+        reuse = recyclable_bundle(team, device)
+        if not reuse:
+            fail('a free Apple ID can register 10 new app IDs per 7 days and they are used up, and every app ID you have is '
+                 'installed on this phone: delete one of those games from the phone, or wait a few days')
+        say('Your Apple ID used its 10 new app IDs for this week: reusing the app ID {}'.format(reuse))
+        bundle = reuse
+        rc, text, log = ps2_app_build(root, out, d, device, team, bundle, app_root)
+    if rc:
+        hint = signing_hint(text)
+        if hint:
+            fail(hint)
+        fail('Xcode could not build the app (the lines above say why)')
+    app = ps2_app_path(text, app_root)
+    if not app:
+        fail('the build made no app at ' + app_root)
+    emit('stage_end', k=3, name='Building the app', ok=True, summary='', elapsed=round(time.time() - started))
+
+    emit('stage', k=4, n=n, name='Installing on ' + device['name'], step='')
+    rc, so, se = capture(['xcrun', 'devicectl', 'device', 'install', 'app', '--device', device['udid'], app], timeout=1800)
+    if rc:
+        fail(install_error(so + se))
+    emit('stage_end', k=4, name='Installing', ok=True, summary='', elapsed=0)
+
+    emit('stage', k=5, n=n, name='Copying the game to the phone', step='')
+    ps2_space_on_phone(device, need)
+    started = time.time()
+    rc, so, se = capture(ps2_copy_argv(device['udid'], bundle, iso), timeout=3 * 3600)
+    if rc:
+        fail(ps2_copy_failure(so + se, need))
+    copied = round(time.time() - started)
+    say('copied {:.1f} GB in {}'.format(need / 2**30, ps2_duration(copied)))
+    emit('stage_end', k=5, name='Copying the game to the phone', ok=True, summary='{:.1f} GB'.format(need / 2**30),
+         elapsed=copied)
+
+    emit('stage', k=6, n=n, name='Starting the game', step='')
+    rc, so, se = capture(['xcrun', 'devicectl', 'device', 'process', 'launch', '--device', device['udid'],
+                          '--terminate-existing', bundle], timeout=120)
+    if rc:
+        msg = install_error(so + se)
+        say('[RED] ' + msg if JSON_OUT else msg)
+        sys.exit(3)
+    emit('stage_end', k=6, name='Starting the game', ok=True, summary='', elapsed=0)
+    say('{} is on {}.'.format(name, device['name']))
+
+
+# ---------------------------------------------------------------------------------------------------------- doctor
+
+def metal_note():
+    """A note when this Xcode's Metal compiler is not the one nxnative's shaders were tested with (dm/gfx/tools/dmsh_chain.lock):
+    builds still work (the build passes --allow-other-metal), the shaders are just made by an untested compiler."""
+    try:
+        with open(os.path.join(ROOT, 'dm', 'gfx', 'tools', 'dmsh_chain.lock')) as f:
+            lock = f.read()
+    except OSError:
+        return None
+    tested = re.search(r'metalfe-(\d+\.\d+\.\d+)', lock)
+    _, so, se = capture(['xcrun', '-sdk', 'iphoneos', 'metal', '--version'], timeout=60)
+    have = re.search(r'metalfe-(\d+\.\d+\.\d+)', so + se)
+    if not tested or not have or tested.group(1) == have.group(1):
+        return None
+    return ('newer than the one nxnative tested ({} vs {}): games build and run, but report any graphics glitch'
+            .format(have.group(1), tested.group(1)))
+
+
+def item(id_, title, ok, detail, fix='none', action=''):
+    return {'id': id_, 'title': title, 'ok': bool(ok), 'detail': detail, 'fix': fix, 'action': action}
+
+
+def xcode_dir():
+    rc, so, _ = capture(['xcode-select', '-p'], timeout=10)
+    d = so.strip()
+    if rc == 0 and '.app/' in d and os.path.isdir(d):
+        return d
+    return '/Applications/Xcode.app/Contents/Developer' if os.path.isdir('/Applications/Xcode.app') else None
+
+
+def apple_id_signed_in():
+    rc, so, _ = capture(['defaults', 'export', 'com.apple.dt.Xcode', '-'], timeout=10)
+    if rc:
+        return False
+    try:
+        p = plistlib.loads(so.encode())
+    except Exception:
+        return False
+    ids = p.get('DVTDeveloperAccountManagerAppleIDLists', {})
+    return any(bool(v) for v in ids.values()) if isinstance(ids, dict) else False
+
+
+def personal_teams():
+    """[(team id, name, free)] Xcode knows about."""
+    rc, so, _ = capture(['defaults', 'export', 'com.apple.dt.Xcode', '-'], timeout=10)
+    out = []
+    try:
+        p = plistlib.loads(so.encode()) if rc == 0 else {}
+    except Exception:
+        p = {}
+    for teams in (p.get('IDEProvisioningTeamByIdentifier') or {}).values():
+        for t in teams:
+            tid = t.get('teamID')
+            if tid and tid not in [x[0] for x in out]:
+                out.append((tid, t.get('teamName', tid), bool(t.get('isFreeProvisioningTeam'))))
+    return out
+
+
+def signing_identity():
+    _, so, _ = capture(['security', 'find-identity', '-v', '-p', 'codesigning'], timeout=10)
+    m = re.search(r'"(Apple Development: [^"]+)"', so)
+    return m.group(1) if m else None
+
+
+def devices():
+    """Real iOS devices (no simulators), most usable first: connected by cable, then over the network."""
+    os.makedirs(SUPPORT, exist_ok=True)          # not tempfile: on a full disk gettempdir() itself raises
+    path = os.path.join(SUPPORT, 'devices-{}.json'.format(os.getpid()))
+    capture(['xcrun', 'devicectl', 'list', 'devices', '--json-output', path], timeout=30)
+    try:
+        with open(path) as f:
+            raw = json.load(f)['result']['devices']
+    except (OSError, ValueError, KeyError):
+        return []
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+    out = []
+    for d in raw:
+        cp, dp, hp = d.get('connectionProperties', {}), d.get('deviceProperties', {}), d.get('hardwareProperties', {})
+        if cp.get('transportType') == 'sameMachine' or hp.get('platform') != 'iOS' or hp.get('reality') == 'virtual':
+            continue
+        out.append({'udid': hp.get('udid'), 'name': dp.get('name'), 'model': hp.get('productType'), 'os': dp.get('osVersionNumber'),
+                    'paired': cp.get('pairingState') == 'paired', 'connected': cp.get('tunnelState') == 'connected',
+                    'wired': cp.get('transportType') == 'wired', 'devmode': dp.get('developerModeStatus') == 'enabled',
+                    'duo': hp.get('productType') == 'iPhone19,4'})
+    out.sort(key=lambda d: (not d['connected'], not d['wired'], not d['duo']))
+    return out
+
+
+def pick_device(explicit=None):
+    ds = devices()
+    if explicit:
+        d = next((d for d in ds if d['udid'] == explicit), None)
+        return d or {'udid': explicit, 'name': explicit, 'connected': True, 'paired': True, 'devmode': True}
+    ready = [d for d in ds if d['connected']]
+    return ready[0] if ready else None
+
+
+def python_ok(py):
+    if not py or not os.path.isfile(py):
+        return False
+    code = 'import sys; assert sys.version_info >= (3, 12); ' + '; '.join('import ' + m for m in PY_MODULES) + \
+           '\ntry:\n import compression.zstd\nexcept ImportError:\n import backports.zstd\nimport capstone; assert capstone.cs_version()[0] == 5'
+    rc, _, _ = capture([py, '-c', code], timeout=30)
+    return rc == 0
+
+
+def pipeline_python():
+    for py in (os.path.join(VENV, 'bin', 'python3'), os.environ.get('DUO_PYTHON'), sys.executable):
+        if python_ok(py):
+            return py
+    return None
+
+
+def ps2_tools_state():
+    """The .iso pipeline's build tools (docs/ARCHITECTURE.md §7.5): bash 4, cmake 3.20, ninja, xcodegen."""
+    missing = []
+    bash = next((p for p in ('/opt/homebrew/bin/bash', '/usr/local/bin/bash', which('bash')) if p and os.path.isfile(p)), None)
+    ver = ''
+    if bash:
+        _, so, _ = capture([bash, '-c', 'printf %s "$BASH_VERSION"'], timeout=10)
+        ver = so.strip().split('(')[0]
+    if not ver or not ver.split('.')[0].isdigit() or int(ver.split('.')[0]) < 4:
+        missing.append('bash 4' if not ver else 'bash 4 (this Mac has {})'.format(ver))
+    cmake = which('cmake')
+    cver = ''
+    if cmake:
+        _, so, _ = capture([cmake, '--version'], timeout=10)
+        m = re.search(r'(\d+)\.(\d+)', so)
+        cver = '{}.{}'.format(m.group(1), m.group(2)) if m else ''
+    if not cver or (int(cver.split('.')[0]), int(cver.split('.')[1])) < (3, 20):
+        missing.append('cmake 3.20' if not cver else 'cmake 3.20 (this Mac has {})'.format(cver))
+    if not which('ninja'):
+        missing.append('ninja')
+    if not which('xcodegen'):
+        missing.append('xcodegen')
+    return (not missing, 'bash {}, cmake, ninja, xcodegen'.format(ver) if not missing else 'missing: ' + ', '.join(missing))
+
+
+def doctor():
+    items = []
+    xd = xcode_dir()
+    items.append(item('xcode', 'Xcode', xd, 'installed' if xd else 'not installed — free on the Mac App Store (about 10 GB)',
+                      'manual', 'macappstore://apps.apple.com/app/id497799835'))
+    if xd:
+        rc1, _, _ = capture(['xcodebuild', '-checkFirstLaunchStatus'], timeout=60)
+        rc2, _, _ = capture(['xcodebuild', '-license', 'check'], timeout=60)
+        items.append(item('xcode-setup', 'Xcode first-time setup', rc1 == 0 and rc2 == 0,
+                          'done' if rc1 == 0 and rc2 == 0 else 'licence and components still to accept (asks for your Mac password once)', 'admin'))
+        metal = metal_note()
+        if metal:
+            items.append(item('metal', 'Xcode\'s Metal compiler', True, metal, 'none'))
+        _, so, _ = capture(['xcodebuild', '-showsdks'], timeout=60)
+        sdk = re.search(r'-sdk iphoneos(\S+)', so)
+        items.append(item('ios-sdk', 'iOS SDK', sdk, 'iOS ' + sdk.group(1) if sdk else 'missing — downloads with Xcode\'s iOS platform', 'auto'))
+    brew = which('brew')
+    tools = {t: which(t) for t in ('xcodegen', 'zstd')}
+    miss = [t for t, p in tools.items() if not p]
+    items.append(item('tools', 'Build tools', not miss, 'xcodegen, zstd' if not miss else 'missing: ' + ', '.join(miss),
+                      'auto' if brew else 'manual', '' if brew else 'Homebrew is needed first: https://brew.sh'))
+    rc, so, _ = capture([dotnet() or 'dotnet', '--list-sdks'], timeout=30)
+    net = re.search(r'^10\.', so or '', re.M)
+    items.append(item('dotnet', '.NET 10 SDK', net, 'installed' if net else 'missing (installs into your home folder, no password)', 'auto'))
+    py = pipeline_python()
+    items.append(item('python', 'Python 3.12 environment', py, 'ready' if py else 'missing (made in Application Support, no password)', 'auto'))
+    signed = apple_id_signed_in()
+    teams = personal_teams()
+    items.append(item('account', 'Apple ID in Xcode', signed,
+                      'signed in ({})'.format(teams[0][1]) if signed and teams else
+                      ('signed in' if signed else 'sign in once: Xcode › Settings › Accounts › +  (a free Apple ID works)'), 'manual', 'xcode-accounts'))
+    d = pick_device()
+    if not d:
+        any_paired = [x for x in devices() if x['paired']]
+        detail = 'connect the iPhone with a cable, unlock it and tap Trust' if not any_paired else \
+                 'connect {} with a cable and unlock it'.format(any_paired[0]['name'])
+        items.append(item('device', 'iPhone', False, detail, 'manual'))
+    elif not d['devmode']:
+        items.append(item('device', 'iPhone', False, '{}: turn on Settings › Privacy & Security › Developer Mode, then restart it'.format(d['name']), 'manual'))
+    else:
+        ready = [x for x in devices() if x['connected'] and x['devmode']]
+        items.append(item('device', 'iPhone', True, ', '.join('{} ({})'.format(x['name'], 'cable' if x['wired'] else 'network')
+                                                                for x in ready) or d['name'], 'none'))
+    k = find_keys()
+    items.append(item('keys', 'prod.keys', k, k or 'add your prod.keys once (drop it on the window)', 'manual'))
+    free = (free_bytes(HOME) or 0) / 2**30     # builds write compiler and Xcode caches here even when the games are on another disk
+    items.append(item('space', 'Free space on this Mac', free >= 15,
+                      '{:.0f} GB free'.format(free) if free >= 15 else
+                      'only {:.1f} GB free: a build needs about 15 GB on this Mac (Xcode caches), free some space first'.format(free), 'manual'))
+    if ps2_root():      # only where the .iso pipeline is installed: a Mac without it has nothing to set up
+        ok, detail = ps2_tools_state()
+        items.append(item('ps2-tools', '.iso (ps2) build tools', ok, detail, 'auto' if brew else 'manual',
+                          '' if brew else 'Homebrew is needed first: https://brew.sh'))
+        vol = ps2_volume()
+        freeb = free_bytes(vol)
+        if freeb is None:
+            detail = 'cannot read the free space on ' + vol
+        elif freeb >= PS2_BUILD_SPACE:
+            detail = '{:.0f} GB free on {}'.format(freeb / 2**30, vol)
+        else:
+            detail = ('only {:.1f} GB free on {}: a build needs about 12 GB (generated code and the compiler\'s output) — '
+                      'free some space, or set DUO_PS2_OUT to a drive with room'.format(freeb / 2**30, vol))
+        items.append(item('ps2-space', '.iso (ps2) build space', freeb is not None and freeb >= PS2_BUILD_SPACE, detail, 'manual'))
+    return {'items': items, 'ready': all(i['ok'] for i in items)}
+
+
+def cmd_doctor(a):
+    d = doctor()
+    if a.json:
+        print(json.dumps(d, indent=2))
+        return
+    for i in d['items']:
+        print('{} {:24} {}'.format('✓' if i['ok'] else '✗', i['title'], i['detail']))
+    print('\nReady.' if d['ready'] else '\nRun `duo fix <item>` for the ones marked auto/admin: ' +
+          ', '.join(i['id'] for i in d['items'] if not i['ok'] and i['fix'] in ('auto', 'admin')))
+
+
+# ---------------------------------------------------------------------------------------------------------- fix
+
+def stream(cmd, env=None):
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env or env_with_tools())
+    for line in p.stdout:
+        say(line.rstrip())
+    return p.wait()
+
+
+def admin(shell):
+    """One macOS password prompt for a command that needs it."""
+    script = 'do shell script "{}" with administrator privileges'.format(shell.replace('\\', '\\\\').replace('"', '\\"'))
+    return stream(['osascript', '-e', script])
+
+
+def best_python():
+    cands = ['/opt/homebrew/bin/python3.13', '/opt/homebrew/bin/python3.12', '/usr/local/bin/python3.13', '/usr/local/bin/python3.12',
+             '/Library/Frameworks/Python.framework/Versions/3.13/bin/python3', '/Library/Frameworks/Python.framework/Versions/3.12/bin/python3',
+             which('python3.13'), which('python3.12')]
+    for p in cands:
+        if p and os.path.isfile(p):
+            rc, so, _ = capture([p, '-c', 'import sys; print(sys.version_info[:2] >= (3, 12))'], timeout=20)
+            if so.strip() == 'True':
+                return p
+    return None
+
+
+def cmd_fix(a):
+    global JSON_OUT
+    JSON_OUT = a.json
+    what = a.item
+    if what == 'xcode-setup':
+        rc = admin('xcodebuild -license accept && xcodebuild -runFirstLaunch')
+    elif what == 'ios-sdk':
+        rc = stream(['xcodebuild', '-downloadPlatform', 'iOS'])
+    elif what == 'tools':
+        if not which('brew'):
+            fail('Homebrew is needed for xcodegen and zstd: install it from https://brew.sh, then try again')
+        rc = stream([which('brew'), 'install', 'xcodegen', 'zstd'])
+    elif what == 'ps2-tools':
+        if not which('brew'):
+            fail('Homebrew is needed for bash 4, cmake, ninja and xcodegen: install it from https://brew.sh, then try again')
+        rc = stream([which('brew'), 'install', 'bash', 'cmake', 'ninja', 'xcodegen'])
+    elif what == 'dotnet':
+        script = os.path.join(tempfile.gettempdir(), 'dotnet-install.sh')
+        rc = stream(['curl', '-fsSL', 'https://dot.net/v1/dotnet-install.sh', '-o', script])
+        if rc == 0:
+            rc = stream(['bash', script, '--channel', '10.0', '--install-dir', os.path.join(HOME, '.dotnet')])
+    elif what == 'python':
+        py = best_python()
+        if not py and which('brew'):
+            stream([which('brew'), 'install', 'python@3.13'])
+            py = best_python()
+        if not py:
+            fail('Python 3.12 or newer is needed: install it from https://www.python.org/downloads/ (or Homebrew), then try again')
+        rc = stream([py, '-m', 'venv', '--clear', VENV])
+        if rc == 0:
+            rc = stream([os.path.join(VENV, 'bin', 'python3'), '-m', 'pip', 'install', '--quiet', '--upgrade', 'pip',
+                         'lz4', 'capstone>=5,<6', 'fonttools', 'backports.zstd; python_version < "3.14"'])
+    elif what == 'xcode-accounts':
+        rc = stream(['open', '-a', 'Xcode'])
+        say('In Xcode: Settings (⌘,) › Accounts › + › Apple ID, sign in, then come back.')
+    else:
+        fail('nothing to fix automatically for "{}"'.format(what), 2)
+    if rc:
+        fail('{} did not finish (exit {}); the lines above say why'.format(what, rc))
+    say('{}: done'.format(what))
+
+
+# ---------------------------------------------------------------------------------------------------------- build
+
+def stage_folder(d):
+    """The folder the pipeline builds from: the base game's own folder when it holds only this game, else a
+    hidden folder beside it with links to exactly the dropped files (one game per folder, the pipeline's rule)."""
+    files = [d['base']] + d['updates'] + d['dlc']
+    paths = [p['file'] for p in files if p]
+    home = os.path.dirname(d['base']['file'])
+    fam = d['base']['title'][:13]          # the title ID without its last 3 digits (base 000, update 800, DLC next 0x1000)
+    fam_dlc = '{:016x}'.format(int(d['base']['title'], 16) + 0x1000)[:13]
+    others = [f for f in os.listdir(home) if f.lower().endswith(PACKAGE_EXT) and not f.startswith('._')]
+    def ours(name):
+        m = re.search(r'\[([0-9A-Fa-f]{16})\]', name)
+        return m and m.group(1).lower()[:13] in (fam, fam_dlc)
+    if all(os.path.join(home, f) in paths or ours(f) for f in others) and all(os.path.dirname(p) == home for p in paths):
+        return home
+    stage = os.path.join(home, '.duo', d['base']['title'])
+    os.makedirs(stage, exist_ok=True)
+    for f in os.listdir(stage):
+        if os.path.islink(os.path.join(stage, f)):
+            os.remove(os.path.join(stage, f))
+    for p in paths:
+        os.symlink(p, os.path.join(stage, os.path.basename(p)))
+    return stage
+
+
+def bundle_id_for(title, team):
+    override = os.environ.get('DUO_BUNDLE_ID')
+    if override:
+        return override
+    return 'org.nxnativeduo.{}.t{}'.format((team or 'local').lower(), title.lower())
+
+
+def cmd_build(a):
+    global JSON_OUT
+    JSON_OUT = a.progress == 'json'
+    files = expand(a.files)
+    keys = find_keys(a.keys, files)
+    if not keys:
+        fail('prod.keys not found: add it once (Duo Builder: drop it on the window; CLI: --keys PATH)')
+    n = 6 if a.install else 4
+    emit('stage', k=1, n=n, name='Reading the game', step='')
+    d = describe(files, keys, a.title_id)
+    if d['problems']:
+        fail(d['problems'][0], 2)
+    g = d['game']
+    duo = d['duo']['state']
+    device = pick_device(a.device or os.environ.get('DUO_DEVICE'))
+    on = a.duo == 'on' and duo == 'available'      # opt-in: every game defaults to letterbox at its true shape
+    if a.duo == 'on' and duo == 'none':
+        fail('no Duo patch pack for this build of {} ({}); build it without --duo on'.format(g['name'], g['build_id']), 2)
+    if on and device and not device.get('duo', True):     # the camera patch is made for the Duo's inner screen (DUO_ASPECT)
+        say('{} is not an iPhone Duo: building at the original shape'.format(device['name']))
+        on = False
+    say('{} {} — {}'.format(g['name'], g['version'], 'Duo full screen' if on else 'original shape (change the fill in the in-game menu)'))
+    emit('stage_end', k=1, name='Reading the game', ok=True, summary=g['name'], elapsed=0)
+
+    py = pipeline_python()
+    if not py:
+        fail('the Python environment for the build is missing: run `duo fix python` (Duo Builder: Setup)')
+    teams = personal_teams()
+    auto_sign = apple_id_signed_in() and teams
+    team = (teams[0][0] if teams else None)
+    bundle = bundle_id_for(g['title'], team)
+    stage = stage_folder(d)
+    env_file = os.path.join(SUPPORT, 'env', g['title'] + ('-duo' if on else '') + '.env')
+    os.makedirs(os.path.dirname(env_file), exist_ok=True)
+    with open(env_file, 'w') as f:
+        f.write('DM_ASPECT=fill\n')                     # the full-size view, so the in-game menu can change the fill live
+        if on:   # the picture-fill DEFAULT follows DM_DUO (dm/games/settings.tsv build:DM_DUO): Stretch, still changeable while playing
+            f.write('DM_DUO=1\nDM_DUO_ASPECT={}\n'.format(DUO_ASPECT))
+        for kv in filter(None, os.environ.get('DUO_EXTRA_ENV', '').split(';')):   # developers: e.g. DM_CTL=Documents/ctl.txt for duo/tools/dev.py
+            f.write(kv.strip() + '\n')
+
+    work_link = os.path.join(stage, g['title'].upper() + '_build')
+    if os.path.islink(work_link) and not os.path.exists(work_link):
+        # the build folder is a link whose target was deleted (a disk clean-up): the pipeline cannot create a folder through
+        # it, so recreate the target and the build starts from scratch there
+        target = os.path.join(os.path.dirname(work_link), os.readlink(work_link))
+        try:
+            os.makedirs(target, exist_ok=True)
+            say('The build folder was cleared; starting this game\'s build from scratch')
+        except OSError:
+            fail('this game\'s build folder points to {}, which is gone (a disconnected drive?): reconnect it, or delete the '
+                 'link {}'.format(target, work_link))
+
+    emit('stage', k=2, n=n, name='Preparing the game', step='')
+    cmd = [py, os.path.join(ROOT, 'scripts', 'build_ipa_from_nsp.py'), stage, '-k', keys, '--env-file', env_file,
+           '--prepare-xcode', '--bundle-id', bundle, '--team-id', team or '0000000000', '--allow-other-metal',
+           *(['--title-id', d['title_id'].upper()] if d.get('title_id') else []),
+           '--progress', 'json' if JSON_OUT else 'lines']
+    env = env_with_tools()
+    env['NXN_REPO'] = ROOT
+    if on:
+        env.update(DM_DUO='1', DM_DUO_ASPECT=DUO_ASPECT, DUO_PATCH=d['duo']['file'])     # the rewriter reads this pack only
+        say('Duo patch pack: {} ({})'.format(d['duo']['name'], d['duo']['author']))
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+    reds = []
+    for line in p.stdout:
+        line = line.rstrip('\n')
+        if '[RED]' in line:
+            reds.append(line)
+        if JSON_OUT and line.startswith('{'):
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                ev = None
+            if ev and ev.get('ev') in ('stage', 'step', 'progress', 'stage_end'):   # the pipeline's own stages, nested under ours
+                ev['sub'] = True
+                sys.stdout.write(json.dumps(ev) + '\n')
+                sys.stdout.flush()
+                continue
+        say(line)
+    if p.wait():
+        fail(pipeline_failure(reds) or 'the game could not be prepared (see the lines above, and {}/{}_build/logs)'.format(stage, g['title'].upper()))
+
+    work = os.path.join(stage, g['title'].upper() + '_build')
+    proj = os.path.join(work, 'xcode', 'DmIOS.xcodeproj')
+    derived = os.path.join(work, 'xcode-derived-data')
+    rc, so, se = capture(['xcodebuild', '-project', proj, '-list'], timeout=120)
+    m = re.search(r'Schemes:\s*\n\s*(.+)', so)
+    if rc or not m:
+        fail('no Xcode scheme in ' + proj)
+    scheme = m.group(1).strip()
+    dest = 'id=' + device['udid'] if device else 'generic/platform=iOS'
+
+    emit('stage', k=3, n=n, name='Building the app', step=scheme)
+    xb = ['xcodebuild', '-project', proj, '-scheme', scheme, '-configuration', 'Release', '-destination', dest,
+          '-derivedDataPath', derived]
+    if auto_sign:
+        xb += ['-allowProvisioningUpdates', '-allowProvisioningDeviceRegistration', 'DEVELOPMENT_TEAM=' + team,
+               'CODE_SIGN_STYLE=Automatic', 'build']
+    else:
+        xb += ['CODE_SIGNING_ALLOWED=NO', 'build']
+    rc, text = xcode_build(xb, quiet_on=app_id_budget_spent if auto_sign else None)
+    if rc and auto_sign and app_id_budget_spent(text):
+        reuse = recyclable_bundle(team, device)
+        if not reuse:
+            fail('a free Apple ID can register 10 new app IDs per 7 days and they are used up, and every app ID you have is '
+                 'installed on this phone: delete one of those games from the phone, or wait a few days')
+        say('Your Apple ID used its 10 new app IDs for this week: reusing the app ID {} (not on this phone)'.format(reuse))
+        bundle = reuse
+        rc, text = xcode_build([x for x in xb if not x.startswith('PRODUCT_BUNDLE_IDENTIFIER=')][:-1] +
+                               ['PRODUCT_BUNDLE_IDENTIFIER=' + bundle, 'build'])
+    if rc:
+        fail('Xcode could not build the app (see the lines above)')
+    app = os.path.join(derived, 'Build', 'Products', 'Release-iphoneos', 'DmIOS.app')
+    if not os.path.isdir(app):
+        fail('the build made no app at ' + app)
+    emit('stage_end', k=3, name='Building the app', ok=True, summary='', elapsed=0)
+
+    emit('stage', k=4, n=n, name='Signing', step='')
+    # DUO_SIGN_AS (developers without an Apple ID in Xcode): sign as another bundle ID this Mac has a profile for,
+    # e.g. a free account's existing app slot; the app takes that ID, so it replaces that app on the phone
+    sign_as = os.environ.get('DUO_SIGN_AS') or bundle
+    if not auto_sign or sign_as != bundle:
+        sign_with_local_profile(app, sign_as, team)
+    bundle = sign_as
+    emit('stage_end', k=4, name='Signing', ok=True, summary='', elapsed=0)
+    if not a.install:
+        say('Built: ' + app)
+        return
+    if not device:
+        fail('no iPhone connected: connect it with a cable, unlock it, then press Install again')
+    emit('stage', k=5, n=n, name='Installing on ' + device['name'], step='')
+    rc, so, se = capture(['xcrun', 'devicectl', 'device', 'install', 'app', '--device', device['udid'], app], timeout=1800)
+    if rc:
+        fail(install_error(so + se))
+    emit('stage_end', k=5, name='Installing', ok=True, summary='', elapsed=0)
+    emit('stage', k=6, n=n, name='Starting the game', step='')
+    rc, so, se = capture(['xcrun', 'devicectl', 'device', 'process', 'launch', '--device', device['udid'],
+                          '--terminate-existing', bundle], timeout=120)
+    if rc:
+        msg = install_error(so + se)
+        say('[RED] ' + msg if JSON_OUT else msg)
+        sys.exit(3)
+    emit('stage_end', k=6, name='Starting the game', ok=True, summary='', elapsed=0)
+    say('{} is on {}.'.format(g['name'], device['name']))
+
+
+def pipeline_failure(reds):
+    """The pipeline's known stops, said for a player: what it means and whether anything on this Mac can fix it."""
+    t = '\n'.join(reds).lower()
+    if 'found no shaders' in t:
+        return ("nxnative can't read this game's graphics yet (its shaders are in a format it does not know). "
+                'Nothing on this Mac fixes that: the game needs new support in nxnative')
+    if 'less than' in t and 'gb free' in t:
+        return 'not enough free space on the drive that holds the game: free some space and install again'
+    if 'aarch64' in t and ('32-bit' in t or 'not aarch64' in t):
+        return 'this is a 32-bit Switch game; nxnative runs only 64-bit games'
+    if 'is damaged' in t or 'hash check failed' in t:
+        return 'the game file is damaged or incomplete: copy or download it again'
+    if 'sparse' in t:
+        return 'this base game can only be read with its update: add the update and install again'
+    return None
+
+
+def xcode_build(cmd, quiet_on=None):
+    """xcodebuild with its output kept out of the way; the error lines are what the player needs. quiet_on(text) -> True
+    hands a failure back to the caller instead of stopping (the app-ID budget, which the caller can work around)."""
+    log = os.path.join(SUPPORT, 'logs', 'xcodebuild-{}.log'.format(int(time.time())))
+    os.makedirs(os.path.dirname(log), exist_ok=True)
+    with open(log, 'w') as f:
+        p = subprocess.Popen(cmd, stdout=f, stderr=subprocess.STDOUT, env=env_with_tools())
+        rc = p.wait()
+    text = ''
+    if rc:
+        with open(log, errors='replace') as f:
+            text = f.read()
+        if quiet_on and quiet_on(text):
+            return rc, text
+        errs = [l.strip() for l in text.splitlines() if ' error: ' in l or l.startswith('error:')]
+        for e in errs[:6]:
+            say(e)
+        say('full log: ' + log)
+        hint = signing_hint(text)
+        if hint:
+            fail(hint)
+    return rc, text
+
+
+def app_id_budget_spent(text):
+    t = text.lower()
+    return 'maximum app id limit' in t or 'maximum number of app ids' in t or ('app id' in t and '7 days' in t)
+
+
+def recyclable_bundle(team, device):
+    """An app ID this team already registered (Xcode keeps a profile for it) whose app is not on the device: a free Apple ID
+    may register only 10 new app IDs per 7 days, but reusing one costs nothing. Our own IDs first."""
+    prof_dir = os.path.join(HOME, 'Library', 'Developer', 'Xcode', 'UserData', 'Provisioning Profiles')
+    ids = []
+    for path in glob.glob(os.path.join(prof_dir, '*.mobileprovision')):
+        _, so, _ = capture(['security', 'cms', '-D', '-i', path], timeout=20)
+        try:
+            pl = plistlib.loads(so.encode())
+        except Exception:
+            continue
+        appid = pl.get('Entitlements', {}).get('application-identifier', '')
+        tid, _, bundle = appid.partition('.')
+        if tid == team and bundle and '*' not in bundle and bundle not in ids:
+            ids.append(bundle)
+    installed = set()
+    if device:
+        _, so, _ = capture(['xcrun', 'devicectl', 'device', 'info', 'apps', '--device', device['udid']], timeout=60)
+        installed = {w for w in so.split() if '.' in w}
+    free = [b for b in ids if b not in installed]
+    free.sort(key=lambda b: (not b.startswith('org.nxnativeduo.'), not 'duo' in b, b))
+    return free[0] if free else None
+
+
+def signing_hint(text):
+    """Xcode's signing failures for a free Apple ID, in one sentence with the one thing to do."""
+    t = text.lower()
+    if 'maximum number of app ids' in t or ('app id' in t and '7 days' in t) or 'cannot create more than 10 app ids' in t:
+        return ('a free Apple ID can register 10 new app IDs per 7 days and this would be one more: reinstall a game you already built, '
+                'or wait a few days')
+    if 'is not available' in t and 'bundle identifier' in t or 'cannot be registered to your development team' in t:
+        return 'that app ID is taken by another account: build again (Duo Builder picks IDs from your team, so this should not happen twice)'
+    if 'no account for team' in t or 'no accounts' in t or 'sign in' in t and 'account' in t:
+        return 'Xcode is not signed in to your Apple ID: Xcode › Settings › Accounts › +, then install again'
+    if 'device' in t and ('not registered' in t or 'unknown device' in t):
+        return 'Xcode could not register this iPhone to your account: unlock it, keep it connected, and install again'
+    if 'developer mode' in t:
+        return 'turn on Developer Mode on the iPhone: Settings › Privacy & Security › Developer Mode, then restart it'
+    return None
+
+
+def install_error(text):
+    t = text.lower()
+    if 'maximum number of apps' in t or 'maximum number of installed' in t or '0xe8008021' in t:
+        return 'a free Apple ID allows 3 of your own apps on the phone: delete one of them from the phone, then try again'
+    if 'not trusted' in t or 'untrusted' in t or 'invalid code signature' in t and 'profile' in t:
+        return 'on the iPhone: Settings › General › VPN & Device Management › your Apple ID › Trust, then open the game'
+    if 'locked' in t:
+        return 'unlock the iPhone, then try again'
+    if '3002' in t or 'entitlement' in t:
+        return 'the app\'s signature does not match its profile: sign in to Xcode (Settings › Accounts) and build again'
+    lines = [l for l in text.strip().splitlines() if l.strip()]
+    return lines[-1] if lines else 'the iPhone refused the app'
+
+
+def sign_with_local_profile(app, bundle, team):
+    """Without an Apple ID in Xcode: sign with a profile this Mac already has for this bundle ID (a developer's path)."""
+    who = signing_identity()
+    if not who:
+        fail('no signing certificate: sign in to Xcode once (Settings › Accounts), it makes one')
+    prof_dir = os.path.join(HOME, 'Library', 'Developer', 'Xcode', 'UserData', 'Provisioning Profiles')
+    match = None
+    for path in glob.glob(os.path.join(prof_dir, '*.mobileprovision')):
+        _, so, _ = capture(['security', 'cms', '-D', '-i', path], timeout=20)
+        try:
+            pl = plistlib.loads(so.encode())
+        except Exception:
+            continue
+        appid = pl.get('Entitlements', {}).get('application-identifier', '')
+        if appid.split('.', 1)[-1] == bundle and pl.get('ExpirationDate') and pl['ExpirationDate'].timestamp() > time.time():
+            match = (path, pl)
+            break
+    if not match:
+        fail('no provisioning profile for {}: sign in to Xcode (Settings › Accounts › +) so it can make one'.format(bundle))
+    path, pl = match
+    shutil.copy(path, os.path.join(app, 'embedded.mobileprovision'))
+    ent = dict(pl['Entitlements'])
+    ent_path = os.path.join(tempfile.gettempdir(), 'duo-ent-{}.plist'.format(os.getpid()))
+    with open(ent_path, 'wb') as f:
+        plistlib.dump(ent, f)
+    with open(os.path.join(app, 'Info.plist'), 'rb') as f:
+        info = plistlib.load(f)
+    if info.get('CFBundleIdentifier') != bundle:
+        info['CFBundleIdentifier'] = bundle
+        with open(os.path.join(app, 'Info.plist'), 'wb') as f:
+            plistlib.dump(info, f)
+    rc, so, se = capture(['codesign', '-f', '-s', who, '--entitlements', ent_path, '--generate-entitlement-der', app], timeout=300)
+    if rc:
+        fail('codesign failed: ' + ((se or so).strip().splitlines() or ['?'])[-1])
+
+
+def cmd_devices(a):
+    ds = devices()
+    if a.json:
+        print(json.dumps({'devices': ds}, indent=2))
+        return
+    for d in ds:
+        print('{} {:22} {:12} iOS {:6} {}{}'.format('●' if d['connected'] else '○', d['name'], d['model'], d['os'] or '?', d['udid'],
+                                                 '  (Duo)' if d['duo'] else ''))
+
+
+def cmd_keys(a):
+    """Remember prod.keys (checked first); with no path, say which one would be used."""
+    k = find_keys(a.path) if a.path else find_keys()
+    if not k:
+        fail('prod.keys not found: give its path (duo keys /path/to/prod.keys)')
+    print(json.dumps({'keys': k}))
+
+
+# ---------------------------------------------------------------------------------------------------------- status
+
+def cmd_status(a):
+    ps = packs()
+    for f, p in ps:
+        print('{:8} {}  {} {}  ({})'.format('shipped' if f.startswith(PACK_DIRS[0]) else 'added', p['main_build_id'], p['game'], p['version'], p['name']))
+    if not ps:
+        print('no Duo patch packs: every game plays letterbox / crop / stretch, chosen in the game')
+
+
+def cmd_patch(a):
+    if a.action == 'list':
+        return cmd_status(a)
+    if a.action == 'remove':
+        target = os.path.join(SUPPORT, 'patches', os.path.basename(a.file or ''))
+        if not a.file or not os.path.isfile(target):
+            fail('no added pack named {} (duo patch list)'.format(a.file), 2)
+        os.remove(target)
+        print('removed ' + os.path.basename(target))
+        return
+    src = a.file
+    if not src or not os.path.isfile(src):
+        fail('give a .duopatch.json or a .zip holding one', 2)
+    if src.lower().endswith('.zip'):
+        import zipfile
+        with zipfile.ZipFile(src) as z:
+            names = [n for n in z.namelist() if n.endswith('.duopatch.json') and not n.startswith('__MACOSX')]
+            if len(names) != 1:
+                fail('the zip must hold exactly one .duopatch.json (it holds {})'.format(len(names)), 2)
+            data, name = z.read(names[0]), os.path.basename(names[0])
+    else:
+        with open(src, 'rb') as f:
+            data, name = f.read(), os.path.basename(src)
+        if not name.endswith('.duopatch.json'):
+            fail('a pack file is named <something>.duopatch.json', 2)
+    try:
+        p = json.loads(data.decode('utf-8'))
+    except ValueError as e:
+        fail('not valid JSON: {}'.format(e), 2)
+    why = check_pack(p)
+    if why:
+        fail('not a Duo patch pack (duo/patches/README.md): ' + why, 2)
+    os.makedirs(os.path.join(SUPPORT, 'patches'), exist_ok=True)
+    with open(os.path.join(SUPPORT, 'patches', name), 'wb') as f:
+        f.write(data)
+    print(json.dumps({'added': name, 'game': p['game'], 'version': p['version'], 'main_build_id': p['main_build_id']}))
+
+
+def main(argv):
+    global JSON_OUT
+    ap = argparse.ArgumentParser(prog='duo', description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest='cmd')
+    s = sub.add_parser('doctor', help='what this Mac still needs')
+    s.add_argument('--json', action='store_true')
+    s.set_defaults(fn=cmd_doctor)
+    s = sub.add_parser('fix', help='fix one doctor item')
+    s.add_argument('item', choices=['xcode-setup', 'ios-sdk', 'tools', 'ps2-tools', 'dotnet', 'python', 'xcode-accounts'])
+    s.add_argument('--json', action='store_true')
+    s.set_defaults(fn=cmd_fix)
+    s = sub.add_parser('info', help='describe game files')
+    s.add_argument('files', nargs='+')
+    s.add_argument('--keys')
+    s.add_argument('--title-id', help='the game to read from a cartridge that holds several (16 hex digits)')
+    s.add_argument('--json', action='store_true')
+    s.set_defaults(fn=cmd_info)
+    s = sub.add_parser('build', help='build a game, and install it with --install')
+    s.add_argument('files', nargs='+')
+    s.add_argument('--keys')
+    s.add_argument('--title-id', help='the game to build from a cartridge that holds several (16 hex digits)')
+    s.add_argument('--duo', choices=['on', 'off'], default='off')
+    s.add_argument('--install', action='store_true')
+    s.add_argument('--device')
+    s.add_argument('--progress', choices=['lines', 'json'], default='lines')
+    s.set_defaults(fn=cmd_build)
+    s = sub.add_parser('devices', help='iPhones and iPads this Mac can install to')
+    s.add_argument('--json', action='store_true')
+    s.set_defaults(fn=cmd_devices)
+    s = sub.add_parser('keys', help='remember prod.keys (or show the one in use)')
+    s.add_argument('path', nargs='?')
+    s.set_defaults(fn=cmd_keys)
+    s = sub.add_parser('patch', help='Duo patch packs: add FILE|ZIP, list, remove NAME')
+    s.add_argument('action', choices=['add', 'list', 'remove'])
+    s.add_argument('file', nargs='?')
+    s.set_defaults(fn=cmd_patch)
+    s = sub.add_parser('status', help='the Duo patch packs in use')
+    s.set_defaults(fn=cmd_status)
+    s = sub.add_parser('ps2', help='.iso (ps2) games: info, build')
+    psub = s.add_subparsers(dest='ps2_cmd')
+    psub.required = True
+    si = psub.add_parser('info', help='what an .iso (ps2) game is')
+    si.add_argument('files', nargs='+')
+    si.add_argument('--json', action='store_true')
+    si.set_defaults(fn=cmd_ps2_info)
+    sb = psub.add_parser('build', help='build an .iso (ps2) game, and install it with --install')
+    sb.add_argument('--iso', required=True)
+    sb.add_argument('--game', help='the game profile to build (default: the serial the image names)')
+    sb.add_argument('--out', help='where the build goes (default: the pipeline\'s big volume, else its out/<serial>)')
+    sb.add_argument('--install', action='store_true')
+    sb.add_argument('--device')
+    sb.add_argument('--bios', help='an optional BIOS dump (4194304 bytes); recorded, never required')
+    sb.add_argument('--setting', action='append', default=[], metavar='K=V', help='a presentation default, repeatable (scale=2)')
+    sb.add_argument('--progress', choices=['lines', 'json'], default='lines')
+    sb.set_defaults(fn=cmd_ps2_build)
+    a = ap.parse_args(argv)
+    if not a.cmd:
+        ap.print_help()
+        return
+    a.fn(a)
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])

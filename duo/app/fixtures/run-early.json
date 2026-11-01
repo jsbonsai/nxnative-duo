@@ -1,0 +1,22 @@
+{
+  "game": "Lantern Isles",
+  "phone": "iPhone Duo",
+  "picture": "Duo full screen",
+  "fraction": 0.03,
+  "elapsed": 18,
+  "stages": [
+    {
+      "id": "read",
+      "title": "Reading the game\u2026",
+      "status": "active",
+      "detail": "1.9 of ~5.0 GB",
+      "fraction": 0.38
+    }
+  ],
+  "log": [
+    "[00:00:02] extract: opening lantern-isles.xci",
+    "[00:00:03] extract: partition secure \u00b7 6 files",
+    "[00:00:11] decompress: main 1.2 of ~5.0 GB",
+    "[00:00:18] decompress: main 1.9 of ~5.0 GB"
+  ]
+}

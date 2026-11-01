@@ -1,0 +1,13 @@
+{
+  "code": "slots_full",
+  "sentence": "a free Apple ID allows 3 of your own apps on the phone: delete one of them from the phone, then try again",
+  "phone": "iPhone Duo",
+  "game": "Night Courier",
+  "picture": "Duo full screen",
+  "stage": "Installing on iPhone Duo",
+  "elapsed": 300,
+  "log": [
+    "[00:04:58] Installing on iPhone Duo",
+    "[00:05:00] [RED] a free Apple ID allows 3 of your own apps on the phone"
+  ]
+}

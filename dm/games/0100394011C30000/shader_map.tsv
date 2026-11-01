@@ -1,0 +1,37 @@
+# kind: evidence  Scott Pilgrim vs The World: The Game shaders (provisional profile) (GLSLC in RomFS + main) → control section + code area keys (dm/gfx/tools/shader_split.py)
+# column 5 records where each key first appears; no PC shader pairing supplied
+package	index	stage	dm_ctl_sha16	source
+ps_enginedata.bin	0	pixel	0464270c1dec34cb	/enginedata/switch/shaders/color_movie.ps#GLSLC@0x0
+ps_enginedata.bin	1	pixel	5f6b3315ab668443	/enginedata/switch/shaders/color_tex0.ps#GLSLC@0x0
+vs_enginedata.bin	0	vertex	0485255243ba6629	/enginedata/switch/shaders/mvppos2_col_tex2.vs#GLSLC@0x0
+vs_enginedata.bin	1	vertex	8bb3ac2696d5ac6e	/enginedata/switch/shaders/screenpos2_col_tex2.vs#GLSLC@0x0
+vs_main.bin	0	vertex	09cc5863ef6fdf71	main#GLSLC@0x139bcfa
+ps_main.bin	0	pixel	d1dfc6628eec9038	main#GLSLC@0x139d50a
+vs_main.bin	1	vertex	2a86a44a06da32bd	main#GLSLC@0x139f165
+vs_main.bin	2	vertex	2a06c0b2ab9b7387	main#GLSLC@0x13a3325
+vs_main.bin	3	vertex	cf838b824bfc8f19	main#GLSLC@0x13a85e5
+vs_main.bin	4	vertex	486ff852fd5a526f	main#GLSLC@0x13ab61d
+vs_main.bin	5	vertex	45beed55d710b56e	main#GLSLC@0x13b151d
+vs_main.bin	6	vertex	ff7f674dbd23ff45	main#GLSLC@0x13b807d
+vs_main.bin	7	vertex	4e4a4c3cfa854e4a	main#GLSLC@0x13bef4d
+vs_main.bin	8	vertex	3520cbb2aa77e988	main#GLSLC@0x13c2895
+ps_main.bin	1	pixel	649c43fef31c5235	main#GLSLC@0x13c4b6d
+ps_main.bin	2	pixel	99701830bee254d7	main#GLSLC@0x13c96cd
+ps_main.bin	3	pixel	b4441ab99c4d205f	main#GLSLC@0x13ce64d
+ps_main.bin	4	pixel	6e3b47e2c080248d	main#GLSLC@0x13ed6f5
+ps_main.bin	5	pixel	1a17d6508340e062	main#GLSLC@0x1407b6d
+ps_main.bin	6	pixel	fca5e9041281dffe	main#GLSLC@0x1427205
+ps_main.bin	7	pixel	1c8fe0f7a9252ee4	main#GLSLC@0x145b41d
+ps_main.bin	8	pixel	1e0fc32017274aa5	main#GLSLC@0x148ef3d
+ps_main.bin	9	pixel	9f5baf7ec639322f	main#GLSLC@0x14a8ec5
+vs_main.bin	9	vertex	b8866bcac86a9af4	main#GLSLC@0x14afeef
+vs_main.bin	10	vertex	d4b6f499acb7a5e5	main#GLSLC@0x14b19ff
+vs_main.bin	11	vertex	e2dc46c8e304baf6	main#GLSLC@0x14b3677
+vs_main.bin	12	vertex	2af546d4c9070cc1	main#GLSLC@0x14b5527
+vs_main.bin	13	vertex	dfaf9ad6107ae147	main#GLSLC@0x14b73a7
+vs_main.bin	14	vertex	42deb084db5e69b4	main#GLSLC@0x14b958f
+vs_main.bin	15	vertex	50b7c1bd43fb7504	main#GLSLC@0x14bb757
+ps_main.bin	10	pixel	d4d7f2759140ca3f	main#GLSLC@0x14bd49f
+ps_main.bin	11	pixel	6a3fc8c44b4f0df1	main#GLSLC@0x14beccf
+ps_main.bin	12	pixel	1f4487702f94e550	main#GLSLC@0x14c0c07
+ps_main.bin	13	pixel	aa393deb862579b9	main#GLSLC@0x14c2a0f

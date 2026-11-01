@@ -1,0 +1,50 @@
+{
+  "game": "Lantern Isles",
+  "phone": "iPhone Duo",
+  "picture": "Duo full screen",
+  "fraction": 0.41,
+  "elapsed": 252,
+  "stages": [
+    {
+      "id": "read",
+      "title": "Read the game",
+      "status": "done",
+      "elapsed": 42
+    },
+    {
+      "id": "rewrite",
+      "title": "Rebuild the game's executable",
+      "status": "done",
+      "elapsed": 70
+    },
+    {
+      "id": "graphics",
+      "title": "Preparing the game's graphics",
+      "status": "active",
+      "detail": "18,204 of 62,901",
+      "fraction": 0.31,
+      "eta": "9m 40s",
+      "hint": "This is the long one, 10\u201340 minutes, and only the first time."
+    },
+    {
+      "id": "build",
+      "title": "Build the app for the phone",
+      "status": "pending"
+    },
+    {
+      "id": "pack",
+      "title": "Pack the app",
+      "status": "pending"
+    },
+    {
+      "id": "install",
+      "title": "Install on iPhone Duo",
+      "status": "pending"
+    }
+  ],
+  "log": [
+    "[00:00:02] extract: opening lantern-isles.xci",
+    "[00:00:42] rewrite: 4 modules rewritten",
+    "[00:01:52] iOS shaders: 18,204 of 62,901 \u00b7 about 9m 40s left"
+  ]
+}

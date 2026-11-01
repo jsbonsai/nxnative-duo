@@ -1,0 +1,46 @@
+{
+  "game": {
+    "title": "0100000000000004",
+    "name": "Night Courier",
+    "publisher": "Lowtide Works",
+    "version": "2.1.0",
+    "icon": null,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc",
+    "bytes": 6100000000
+  },
+  "cartridge": [],
+  "title_id": null,
+  "base": {
+    "file": "~/Games/Night Courier/night-courier.xci",
+    "kind": "application",
+    "display_version": "1.0.0",
+    "name": "Night Courier"
+  },
+  "update": {
+    "file": "~/Games/Night Courier/night-courier-v2.1.0.nsp",
+    "kind": "patch",
+    "display_version": "2.1.0"
+  },
+  "updates": [
+    {
+      "file": "~/Games/Night Courier/night-courier-v2.1.0.nsp",
+      "kind": "patch",
+      "display_version": "2.1.0"
+    }
+  ],
+  "dlc": [],
+  "duo": {
+    "state": "available",
+    "name": "Night Courier \u2014 Duo camera",
+    "author": "nxnative-duo",
+    "source": "shipped"
+  },
+  "support": {
+    "state": "tested",
+    "versions": [
+      "2.1.0"
+    ]
+  },
+  "problems": [],
+  "keys": "~/Documents/prod.keys"
+}

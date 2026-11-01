@@ -1,0 +1,20 @@
+# Duo aspect registry: one row per supported build.
+# build_id<TAB>sites<TAB>const<TAB>note
+# `const` is the rodata offset of the 16:9 float (0x3FE38E39). When set, the rewriter
+# replaces it with the drawable's ratio, which every camera copies when it is made.
+# Sites are the per-site stub route (used for TotK, where the constant alone is not the
+# whole story). A row may set either or both.
+# Sites are offsets in the original main (the same address space patch_nso.py cuts).
+# Each must hold an aspect instruction (fdiv s<d>, s<n>, s<m> or ldr s<d>, [x<n>, #imm]).
+277178b7dba1b6d4949a84778d4abc58	0x628c74,0xb43460,0x1ff04f4,0x253fbb0	-	Tears of the Kingdom 1.4.3: camera update, camera setup, viewport x2 (verified on device)
+891687f016a18f1773d4a88ebf8a973c	0x901640,0x90165c	0xda6934	Super Mario 3D World (build we have): camera aspect fdivs (rect w/h -> +0x124/+0x128) plus the 16:9 rodata constant
+ab06020960edd8285b7ff5fad2e3224b	0x1038130,~0x10384bc	-	DRAGON QUEST VII Reimagined 1.1.0 (UE4.27): BOTH branches of FMinimalViewInfo's projection aspect — 0x1038130 W/H (MaintainXFOV, UE4's default and the live one: with only ~0x10384bc patched the Duo picture measured stretched, NCC 0.93 vs 0.64, 2026-10-30) and ~0x10384bc H/W (MaintainYFOV, gets 1/ratio). Exclusive branches: never both applied. See duo/games/0100A9D01C446000-camera.md
+74570fa2709ed714006cd65c42a97dc6	0x13d2c,0x1610ac	-	Burnout Paradise: camera-lens aspect (0x1610ac) + default camera (0x13d2c); the old 16:9 const 0xaab614 is overwritten at boot and gates the letterbox test, so it stays. Patch applies, but the game does NOT boot yet: provisional profile, frame 1 then unimplemented NVN calls (nvnCommandBufferSetConservativeRasterDilate etc.), 2026-10-30. See duo/games/0100DBF01000A000-camera.md
+79e5950ffa85acf63e28c9aec051eac2	-	-	Luigi's Mansion 3 1.4.0: canvas rows only for now (the 16:9 const patch hung the game; aspect site TBD)
+# cd57b23fa4bbad65803d9788c01821ee			Breath of the Wild 1.9.0: not scanned yet
+824b38a25986b2abf5b3a356430ee6b3	0xff4ef0	-	Assassin's Creed The Ezio Collection: camera horizontal-FOV scale (a movz+movk pair at 0xff4ef0; the other ten 16:9 pairs are UI letterbox maths). The patch applies, but the game cannot be PACKED yet: the shader split finds no shaders in main or the RomFS (run 2026-10-30) and the profile is provisional. See duo/games/0100670014482000-camera.md
+cd6e42aee7934f4d8393cd43893ae25e	0x10f47c	-	Super Mario Bros. Wonder: camera projection aspect (0x10f47c, the only instruction that writes projection+0xb0; no 16:9 constant exists in this build and the ratio is authored rig data). See duo/games/010015100B514000-camera.md
+14c878ecca9d7cb5b57e9b492b1bdb92	-	-	Demon Slayer (UE4): no 16:9 constant; the rect->aspect fdivs are unreachable or render-pass inputs, camera site TBD. See duo/games/0100309016E7A000-camera.md
+a071148fe679e76dcdb297c7a7a6013d	0x2fe2e0,0x2fe5f8	-	Super Mario Galaxy 2: the camera aspect CACHE (camera+0xbc) and the getter the render pass rebuilds the projection from. 0x2fe4a0 is NOT a site: it is the matrix element cot/aspect, so patching it applied the ratio twice (the on-screen mushroom came out squashed flat, 2026-10-30). See duo/games/0100FD8022DAA000-camera.md
+f7ec03e4cb9de3bd8319d4e899d2e9cc	0x1038130,~0x10384bc	-	DRAGON QUEST VII Reimagined 1.2.0 (UE4.27): BOTH branches of FMinimalViewInfo's projection aspect — 0x1038130 W/H (MaintainXFOV, UE4's default and the live one: with only ~0x10384bc patched the Duo picture measured stretched, NCC 0.93 vs 0.64, 2026-10-30) and ~0x10384bc H/W (MaintainYFOV, gets 1/ratio). Exclusive branches: never both applied. See duo/games/0100A9D01C446000-camera.md
+909e904af78ac1b8deefe97ab2ccdb51	0x1092c,0x114a0,0x10b58,0xc0c24	-	The Legend of Zelda: Link's Awakening 1.1.0: render-camera aspect R+0x1dc (16:9 load 0x1092c, override load 0x114a0, no-camera reset pair 0xc0c24) and the aspect divisor of the second scene projection 0x10b58; rodata 0x16afba4 not patched (also a render width). Untested on device. See duo/games/01006BB00C6F0000-camera.md

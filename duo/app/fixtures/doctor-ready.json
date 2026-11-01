@@ -1,0 +1,93 @@
+{
+  "items": [
+    {
+      "id": "xcode",
+      "title": "Xcode",
+      "ok": true,
+      "detail": "installed",
+      "fix": "manual",
+      "action": "macappstore://apps.apple.com/app/id497799835"
+    },
+    {
+      "id": "xcode-setup",
+      "title": "Xcode first-time setup",
+      "ok": true,
+      "detail": "done",
+      "fix": "admin",
+      "action": ""
+    },
+    {
+      "id": "metal",
+      "title": "Xcode's Metal compiler",
+      "ok": true,
+      "detail": "newer than the one nxnative tested (18.0.0 vs 17.0.0): games build and run, but report any graphics glitch",
+      "fix": "none",
+      "action": ""
+    },
+    {
+      "id": "ios-sdk",
+      "title": "iOS SDK",
+      "ok": true,
+      "detail": "iOS 27.2",
+      "fix": "auto",
+      "action": ""
+    },
+    {
+      "id": "tools",
+      "title": "Build tools",
+      "ok": true,
+      "detail": "xcodegen, zstd",
+      "fix": "auto",
+      "action": ""
+    },
+    {
+      "id": "dotnet",
+      "title": ".NET 10 SDK",
+      "ok": true,
+      "detail": "installed",
+      "fix": "auto",
+      "action": ""
+    },
+    {
+      "id": "python",
+      "title": "Python 3.12 environment",
+      "ok": true,
+      "detail": "ready",
+      "fix": "auto",
+      "action": ""
+    },
+    {
+      "id": "account",
+      "title": "Apple ID in Xcode",
+      "ok": true,
+      "detail": "signed in (Jane)",
+      "fix": "manual",
+      "action": "xcode-accounts"
+    },
+    {
+      "id": "device",
+      "title": "iPhone",
+      "ok": true,
+      "detail": "iPhone Duo (cable)",
+      "fix": "none",
+      "action": ""
+    },
+    {
+      "id": "keys",
+      "title": "prod.keys",
+      "ok": true,
+      "detail": "~/Documents/prod.keys",
+      "fix": "manual",
+      "action": ""
+    },
+    {
+      "id": "space",
+      "title": "Free space on this Mac",
+      "ok": true,
+      "detail": "41 GB free",
+      "fix": "manual",
+      "action": ""
+    }
+  ],
+  "ready": true
+}

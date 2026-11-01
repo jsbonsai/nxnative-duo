@@ -1,0 +1,41 @@
+{
+  "game": {
+    "title": "0100000000000003",
+    "name": "Tidewalker",
+    "publisher": null,
+    "version": null,
+    "icon": null,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc",
+    "bytes": 4500000000
+  },
+  "cartridge": [],
+  "title_id": null,
+  "base": {
+    "file": "~/Games/Tidewalker/tidewalker.iso",
+    "kind": "application",
+    "name": "Tidewalker"
+  },
+  "update": null,
+  "updates": [],
+  "dlc": [],
+  "duo": {
+    "state": "none"
+  },
+  "support": {
+    "state": "provisional",
+    "versions": [],
+    "note": "boots, still being brought up"
+  },
+  "problems": [],
+  "keys": "~/Documents/prod.keys",
+  "ps2": {
+    "serial": "SCUS-97399",
+    "region": "NTSC-U",
+    "layers": 2,
+    "size_bytes": 4509715660,
+    "bios": "required",
+    "boot": "SLUS_212.24",
+    "boot_crc": "8a1b2c3d",
+    "boot_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  }
+}

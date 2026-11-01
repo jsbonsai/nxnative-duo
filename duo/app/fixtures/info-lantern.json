@@ -1,0 +1,56 @@
+{
+  "game": {
+    "title": "0100000000000001",
+    "name": "Lantern Isles",
+    "publisher": "Northwind Games",
+    "version": "1.2.0",
+    "icon": null,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc",
+    "bytes": 6550000000
+  },
+  "cartridge": [],
+  "title_id": null,
+  "base": {
+    "file": "~/Games/Lantern Isles/lantern-isles.xci",
+    "kind": "application",
+    "display_version": "1.0.0",
+    "name": "Lantern Isles"
+  },
+  "update": {
+    "file": "~/Games/Lantern Isles/lantern-isles-v1.2.0.nsp",
+    "kind": "patch",
+    "display_version": "1.2.0"
+  },
+  "updates": [
+    {
+      "file": "~/Games/Lantern Isles/lantern-isles-v1.2.0.nsp",
+      "kind": "patch",
+      "display_version": "1.2.0"
+    }
+  ],
+  "dlc": [
+    {
+      "file": "~/Games/Lantern Isles/dlc-a.nsp",
+      "kind": "addon"
+    },
+    {
+      "file": "~/Games/Lantern Isles/dlc-b.nsp",
+      "kind": "addon"
+    }
+  ],
+  "duo": {
+    "state": "available",
+    "name": "Lantern Isles \u2014 Duo camera",
+    "author": "nxnative-duo",
+    "source": "shipped",
+    "note": "The 3D world fills the inner screen."
+  },
+  "support": {
+    "state": "other-version",
+    "versions": [
+      "1.0.0"
+    ]
+  },
+  "problems": [],
+  "keys": "~/Documents/prod.keys"
+}

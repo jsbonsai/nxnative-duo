@@ -1,0 +1,44 @@
+# Game profile of Toy Story: Retro Roundup! (Switch, update 1.0.4 = v262144; the second application of the Toy Story double-pack cartridge 01001DC025BC4000, picked with
+# NX_TITLE / --title-id 0100F98025BC0000). See README.md
+# Format: see dm/games/README.md
+# A collection of emulated retro games (PS1 discs under pancake/, SNES / GBC ROMs and replays under assets/) in an engine of its own on NVIDIA's desktop OpenGL through EGL: main imports
+# the EGL functions and takes every GL call from eglGetProcAddress, which the host's GL layer answers on Metal (dm/gfx/gl/hle_gl.m), so NVIDIA's GL driver (subsdk0) is never loaded. SDK 21.4.4
+# The shaders are GLSL sources in RIFF "SHDR" files (assets/shaders/*.shader: a gl43 hlslcc variant and an HLSL → SPIR-V → GLSL "gl" variant of each stage)
+
+# ---- Identity ----
+title_id	0100F98025BC0000
+program_id	0100F98025BC0000
+
+# ---- App ----
+name	Toy Story: Retro Roundup!
+ipa	ToyStoryRetroRoundup.ipa
+app_category	public.app-category.games
+
+# ---- Versions ----
+build	v262144	1.0.4	main=c41be91d22c27e2b6efb276f5adeff8a	subsdk1=fc537f0b21c880e89d6f247d22a150ca	subsdk2=d2f30df7fe91f56a5f9c95bcabe291ea	sdk=148394139d9d26ca8afd5c9ba5d30601
+package	v262144
+shader_versions	v262144
+
+# ---- Files ----
+# subsdk1 is the movie player (main imports it), subsdk2 GLSLC; subsdk0 is NVIDIA's OpenGL driver, which programs the GPU through NvRm: never loaded, the GL layer answers main's EGL imports
+modules	main subsdk1 subsdk2 sdk
+romfs_marker	pancake/ps1_abugslife/DisneyPixarABugsLife_SLUS01538_SCEA_EN.bin
+zip_store	.bin:.dds:.gbc:.md:.nro:.ogg:.png:.replay:.sfc:.sprite:.waves:.webm:.metallib
+
+# ---- Memory ----
+# The NPDM declares 2 MB of system resource, so IsVirtualAddressMemoryEnabled is true and main never sets a heap: nninitStartup's malloc setup (main+0x7e70) calls
+# StandardAllocator::Initialize(nullptr, 0x1fa000000), a fixed 7.91 GB of address space made for the Switch's 64 GB alias region (main+0x2c8b00 → sdk+0x141ac0). The host's gate gives it
+# what the alias region has room for, 4.06 GB, which fits after the SDK's 62 MB node area: SDK 21.4.4's AddressRegionManager constructor (sdk+0x14fbe0) takes the SDK-wide node area cut
+# (dm/tools/sdk_patches.py; without it the 1 GB node area left no room, and CentralHeap::Init failed: an nn::diag abort at sdk+0x141b9c). Region placement aligns to 64 KB or 2 MB only
+# (VammManager::AllocateAddressRegion, sdk+0x14fd00), so no alignment cut. Engage's 5 GB block: 256 MB in front + 4.375 GB alias region + 256 MB stack region + 128 MB heap region
+mem_reserve	0x140000000
+mem_alias	0x118000000
+mem_stack	0x10000000
+app_pool	0xCD500000
+# the NPDM declares 2 MB of system resource
+sys_resource	0x200000
+
+# ---- Shader split ----
+# no NVN shaders: the NVN tables stay empty (gl_shaders.py writes the GL library and its table, not the profile)
+shader_groups	/assets/=assets /pancake/=pancake /nro/=nro /.nrr/=nrr
+shader_note	Toy Story: Retro Roundup! has no NVN shaders (its GLSL shaders go through the GL layer)

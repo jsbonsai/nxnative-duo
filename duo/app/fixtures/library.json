@@ -1,0 +1,146 @@
+[
+  {
+    "id": "0100000000000004",
+    "title": "Night Courier",
+    "publisher": "Lowtide Works",
+    "platform": "switch",
+    "files": [],
+    "support": {
+      "state": "tested",
+      "tested_version": "2.1.0"
+    },
+    "last_used": "2026-10-31T12:00:00Z",
+    "cache_key": "~/Games/Night Courier/0100000000000004_build",
+    "version": "2.1.0",
+    "bytes": 6100000000,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc"
+  },
+  {
+    "id": "0100000000000003",
+    "title": "Tidewalker",
+    "publisher": null,
+    "platform": "ps2",
+    "files": [],
+    "support": {
+      "state": "provisional",
+      "tested_version": null
+    },
+    "last_used": "2026-10-31T11:00:00Z",
+    "cache_key": null,
+    "version": null,
+    "bytes": 4500000000,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc"
+  },
+  {
+    "id": "0100000000000002",
+    "title": "Stone & Sky",
+    "publisher": "Fernhill Studio",
+    "platform": "switch",
+    "files": [],
+    "support": {
+      "state": "unknown",
+      "tested_version": null
+    },
+    "last_used": "2026-10-31T10:00:00Z",
+    "cache_key": null,
+    "version": "1.0.2",
+    "bytes": 7100000000,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc"
+  },
+  {
+    "id": "0100000000000001",
+    "title": "Lantern Isles",
+    "publisher": "Northwind Games",
+    "platform": "switch",
+    "files": [],
+    "support": {
+      "state": "other-version",
+      "tested_version": "1.0.0"
+    },
+    "last_used": "2026-10-31T09:00:00Z",
+    "cache_key": null,
+    "version": "1.2.0",
+    "bytes": 6550000000,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc"
+  },
+  {
+    "id": "0100000000000005",
+    "title": "Ember Wake",
+    "publisher": "Glass Yard",
+    "platform": "switch",
+    "files": [],
+    "support": {
+      "state": "tested",
+      "tested_version": "1.0.0"
+    },
+    "last_used": "2026-10-30T20:00:00Z",
+    "cache_key": "~/Games/Ember Wake/0100000000000005_build",
+    "version": "1.0.0",
+    "bytes": 5200000000,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc"
+  },
+  {
+    "id": "0100000000000006",
+    "title": "Glass Harbor",
+    "publisher": "Tidal Works",
+    "platform": "switch",
+    "files": [],
+    "support": {
+      "state": "tested",
+      "tested_version": "1.0.0"
+    },
+    "last_used": "2026-10-30T19:00:00Z",
+    "cache_key": "~/Games/Glass Harbor/0100000000000006_build",
+    "version": "1.0.0",
+    "bytes": 4900000000,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc"
+  },
+  {
+    "id": "0100000000000007",
+    "title": "Paper Moon",
+    "publisher": "Northwind Games",
+    "platform": "switch",
+    "files": [],
+    "support": {
+      "state": "other-version",
+      "tested_version": "1.0.0"
+    },
+    "last_used": "2026-10-30T18:00:00Z",
+    "cache_key": "~/Games/Paper Moon/0100000000000007_build",
+    "version": "1.0.1",
+    "bytes": 3800000000,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc"
+  },
+  {
+    "id": "0100000000000008",
+    "title": "Moss Kingdom",
+    "publisher": "Fernhill Studio",
+    "platform": "switch",
+    "files": [],
+    "support": {
+      "state": "tested",
+      "tested_version": "1.0.0"
+    },
+    "last_used": "2026-10-30T17:00:00Z",
+    "cache_key": null,
+    "version": "1.0.0",
+    "bytes": 2400000000,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc"
+  },
+  {
+    "id": "0100000000000009",
+    "title": "Harbor Lights",
+    "publisher": "Tidal Works",
+    "platform": "switch",
+    "files": [],
+    "support": {
+      "state": "provisional",
+      "tested_version": null
+    },
+    "last_used": "2026-10-30T16:00:00Z",
+    "cache_key": null,
+    "version": "1.0.0",
+    "bytes": 3100000000,
+    "build_id": "f7ec03e4cb9de3bd8319d4e899d2e9cc"
+  }
+]

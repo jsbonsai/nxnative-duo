@@ -1,0 +1,38 @@
+# Game profile of Scott Pilgrim vs The World: The Game (Switch, update 1.0.3 = v196608). Brought up from a provisional
+# profile (survey: 0100394011C30000_survey/survey.md): boots and runs on the Mac host (2,400 frames, p50 16.67 ms, 920 MiB).
+# The memory values are still the guess; they are checked by the Mac run. Ubisoft's engine on SDK 10.6, NVN; modules main + sdk
+# (subsdk0 is GLSLC and nothing main imports comes from it). Shaders: 39 GLSLC outputs in main (shader_split).
+# Scott Pilgrim vs The World: The Game, SDK 10, survey /path/to/games/Scott Pilgrim vs The World The Game/0100394011C30000_survey/survey.md
+
+# ---- Identity ----
+title_id	0100394011C30000
+program_id	0100394011C30000
+
+# ---- App ----
+name	Scott Pilgrim vs The World: The Game
+ipa	ScottPilgrimVsTheWorldTheGame.ipa
+app_category	public.app-category.games
+
+# ---- Versions ----
+build	v196608	1.0.3	main=8b939dc403aa7e4817de4f646ff72d86	sdk=bbc88b74cd99a89dda01ee7be4691612
+package	v196608
+shader_versions	v196608
+
+# ---- Files ----
+# not loaded, main takes nothing from them the host does not supply: subsdk0 (GLSLC)
+modules	main sdk
+romfs_marker	final/audio/packages/49ab37e78ba83ff1c9089782.spk
+zip_store	.dat:.hpk:.otf:.png:.spk:.metallib
+
+# ---- Memory ----
+# main sets a heap of at most the pool − 64 MB: a 3328 MB heap region
+mem_reserve	0x100000000
+mem_alias	0x10000000
+mem_stack	0x10000000
+app_pool	0xCD500000
+# the NPDM declares 0 MB of system resource: IsVirtualAddressMemoryEnabled is false, as on Horizon (Big Brain Academy: Brain vs. Brain sets a heap only then)
+sys_resource	0x0
+
+# ---- Shader split ----
+shader_groups	/final/=final /enginedata/=enginedata
+shader_note	Scott Pilgrim vs The World: The Game shaders (provisional profile)
