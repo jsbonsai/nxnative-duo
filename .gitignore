@@ -1,0 +1,83 @@
+# ---------------------------------------------------------------------------
+# Game files and keys: never commit these. They are the user's own, they are
+# copyrighted, and a leak here is the one mistake this project cannot undo.
+# Patterns are anchored where a tracked directory of the same name exists
+# (dm/games and duo/games are analysis notes, not game data), so they stay
+# commit-able.
+# ---------------------------------------------------------------------------
+/games/
+/NSP/
+/nsp/
+*.nsp
+*.xci
+*.nsz
+*.xcz
+*.nca
+*.nro
+*.kip
+*.romfs
+romfs.img
+RomFS.img
+*.keys
+prod.keys
+title.keys
+# Extracted / staged game trees the pipeline leaves beside a game folder
+/extract/
+/extracted/
+# Signing material (profiles and keys, never the app's own sources)
+*.mobileprovision
+*.provisionprofile
+*.p12
+*.pem
+*.cer
+
+# ---------------------------------------------------------------------------
+# Build outputs
+# ---------------------------------------------------------------------------
+builds/
+*.ipa
+*.app
+*.app.zip
+*.xcarchive
+*.dSYM
+DerivedData/
+xcode-derived-data/
+.iosdd/
+.iosdd_mac/
+.iosdd_*/
+# A game's build folder beside the game (`<game>_build`), and its logs
+*_build/
+
+# ---------------------------------------------------------------------------
+# macOS
+# ---------------------------------------------------------------------------
+.DS_Store
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+.fseventsd
+.documentRevisions-V100
+Thumbs.db
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+.venv/
+venv/
+
+# ---------------------------------------------------------------------------
+# Upstream's rule, kept: made from each shader build's Mac outputs
+# (c1_guard.py, cb_extent.py; the NSP script makes them), not committed
+# ---------------------------------------------------------------------------
+dm/games/*/c1_full.tsv
+dm/games/*/cb_extent.tsv
+# coverage.py data and its JSON report (pyproject.toml, [tool.coverage.run])
+.coverage
+.coverage.*
+/coverage.json

@@ -1,0 +1,264 @@
+# /path/to/work/0100A9D01C446000_build/extract/v65536/ExeFS/main
+# build id ab06020960edd8285b7ff5fad2e3224b
+# text 0x4f8e9f0 bytes, 20855420 instructions, 131726 fdiv, 16:9 constants at ['0x5183ddc']
+
+0x24100c  ldr  score 5  str #0xac before (tangent) ; str #0xb0 (projection aspect)
+      0x241004  mov      w9, #0x130
+      0x241008  str      s0, [x19, #0xac]
+   >> 0x24100c  ldr      s0, [x9]
+      0x241010  mov      w9, #0x134
+      0x241014  str      s0, [x19, #0xb0]
+
+0x24106c  ldr  score 5  str #0xac before (tangent) ; str #0xb0 (projection aspect)
+      0x241064  str      s0, [x19, #0xac]
+      0x241068  bl       #0x3cb048
+   >> 0x24106c  ldr      s0, [x0, #0x168]
+      0x241070  mov      x0, x19
+      0x241074  str      s0, [x19, #0xb0]
+
+0x16e554c  ldr  score 5  str #0xac before (tangent) ; str #0xb0 (projection aspect)
+      0x16e5544  str      s0, [x19, #0xac]
+      0x16e5548  ldr      s0, [x20, #0x124]
+   >> 0x16e554c  ldr      s1, [x21, #0x78]
+      0x16e5550  fmul     s3, s0, s1
+      0x16e5554  str      s3, [x19, #0xb0]
+
+0x18a31e0  ldr  score 5  str #0xac before (tangent) ; str #0xb0 (projection aspect)
+      0x18a31d8  fadd     s0, s0, s2
+      0x18a31dc  str      s0, [x0, #0xac]
+   >> 0x18a31e0  ldr      s0, [x1, #8]
+      0x18a31e4  fadd     s0, s0, s1
+      0x18a31e8  str      s0, [x0, #0xb0]
+
+0x36b05a8  ldr  score 5  str #0xac before (tangent) ; str #0xb0 (projection aspect)
+      0x36b05a0  fmadd    s0, s2, s1, s0
+      0x36b05a4  str      s0, [x19, #0xac]
+   >> 0x36b05a8  ldr      s0, [x29, #0x1c]
+      0x36b05ac  str      s0, [x19, #0xb0]
+      0x36b05b0  ldp      x20, x19, [sp, #0xa0]
+
+0x240f3c  ldr  score 3  str #0xb0 (projection aspect)
+      0x240f34  ldr      x14, [x12, x13]
+      0x240f38  ldr      x14, [x14, x11, lsl #3]
+   >> 0x240f3c  ldr      s0, [x14, #0x130]
+      0x240f40  str      s0, [x19, #0xb0]
+      0x240f44  ldr      x14, [x12, x13]
+
+0x2a588c  ldr  score 3  str #0xb0 (projection aspect)
+      0x2a5884  ldr      s0, [x22, #0x14]
+      0x2a5888  str      s0, [x8, #0x80]
+   >> 0x2a588c  ldr      s0, [x22, #0x18]
+      0x2a5890  str      w21, [x8, #0xa0]
+      0x2a5894  str      s11, [x8, #0xb0]
+
+0x1d54258  ldr  score 3  str #0xb0 (projection aspect)
+      0x1d54250  stp      x8, x9, [x19, #0x70]
+      0x1d54254  adrp     x9, #0x5183000
+   >> 0x1d54258  ldr      s0, [x9, #0x110]
+      0x1d5425c  adrp     x9, #0x5183000
+      0x1d54260  str      s0, [x19, #0xb0]
+
+0x2198654  ldr  score 3  str #0xb0 (projection aspect)
+      0x219864c  ubfx     w8, w8, #5, #1
+      0x2198650  strb     w8, [x1]
+   >> 0x2198654  ldr      s0, [x2, #0xf0]
+      0x2198658  str      s0, [x1, #0xb0]
+      0x219865c  ldp      q0, q1, [x2, #0x10]
+
+0x23197d8  ldr  score 3  str #0xb0 (projection aspect)
+      0x23197d0  ldr      s0, [x20, #0x78]
+      0x23197d4  fmul     s0, s0, s8
+   >> 0x23197d8  ldr      s1, [x20, #0xb0]
+      0x23197dc  fadd     s0, s0, s1
+      0x23197e0  str      s0, [x20, #0xb0]
+
+0x2319818  ldr  score 3  str #0xb0 (projection aspect)
+      0x2319810  str      x8, [x0, #0x88]
+      0x2319814  ldr      w8, [x0, #0x84]
+   >> 0x2319818  ldr      s0, [x0, #0xac]
+      0x231981c  str      s0, [x0, #0xb0]
+      0x2319820  str      w8, [x0, #0x90]
+
+0x2683120  ldr  score 3  str #0xb0 (projection aspect)
+      0x2683118  ldr      s0, [x9]
+      0x268311c  ldr      s1, [x10]
+   >> 0x2683120  ldr      s2, [x8]
+      0x2683124  stp      s1, s2, [x20, #0xa8]
+      0x2683128  str      s0, [x20, #0xb0]
+
+0x36aa028  ldr  score 3  str #0xb0 (projection aspect)
+      0x36aa020  ldr      x8, [x9, w8, sxtw #3]
+      0x36aa024  str      x8, [x19, #0x10]
+   >> 0x36aa028  ldr      s0, [x19]
+      0x36aa02c  str      s0, [x8, #0xb0]
+      0x36aa030  ldr      x21, [sp, #0x10]
+
+0x3c1081c  ldr  score 3  str #0xb0 (projection aspect)
+      0x3c10814  str      s13, [x25, #0xa4]
+      0x3c10818  str      w8, [x25, #0xa0]
+   >> 0x3c1081c  ldr      s0, [x23, #0xc]
+      0x3c10820  str      w22, [x25, #0xa8]
+      0x3c10824  str      s0, [x25, #0xb0]
+
+0x3d5c778  fdiv  score 3  str #0xb0 (projection aspect)
+      0x3d5c770  mul      w8, w9, w8
+      0x3d5c774  scvtf    s1, w8
+   >> 0x3d5c778  fdiv     s0, s0, s1
+      0x3d5c77c  str      s0, [x28, #0xb0]
+      0x3d5c780  ldr      w8, [x23, #0x14]
+
+0x3dcb43c  fdiv  score 3  str #0xb0 (projection aspect)
+      0x3dcb434  str      s3, [x19, #0x90]
+      0x3dcb438  fadd     s5, s5, s3
+   >> 0x3dcb43c  fdiv     s4, s4, s9
+      0x3dcb440  ldp      d9, d8, [sp, #0x50]
+      0x3dcb444  str      s4, [x19, #0xb0]
+
+0x4447a28  ldr  score 3  str #0xb0 (projection aspect)
+      0x4447a20  ldr      x8, [x19, #0x130]
+      0x4447a24  add      x9, x8, #0x11c
+   >> 0x4447a28  ldr      s0, [x8, #0x124]
+      0x4447a2c  ldr      d1, [x9]
+      0x4447a30  str      s0, [x19, #0xb0]
+
+0x4f3f820  ldr  score 3  str #0xb0 (projection aspect)
+      0x4f3f818  ret      
+      0x4f3f81c  sub      sp, sp, #0x60
+   >> 0x4f3f820  ldr      s3, [x0, #0xb4]
+      0x4f3f824  str      s0, [x0, #0xb0]
+      0x4f3f828  str      s0, [x0, #0xb8]
+
+0x2259a4  ldr  score 2  str #0xac before (tangent)
+      0x22599c  ldr      s0, [sp, #0xa8]
+      0x2259a0  str      s0, [x23, #0xac]
+   >> 0x2259a4  ldr      s0, [sp, #0xdc]
+      0x2259a8  str      s0, [x23, #0xc0]
+      0x2259ac  ldr      s0, [sp, #0xac]
+
+0x1680698  ldr  score 2  str #0xac before (tangent)
+      0x1680690  bl       #0x4f8bfc0
+      0x1680694  str      s0, [x19, #0xac]
+   >> 0x1680698  ldr      s0, [x19, #0x94]
+      0x168069c  fmul     s0, s0, s8
+      0x16806a0  bl       #0x4f8bfc0
+
+0x16e5548  ldr  score 2  str #0xac before (tangent)
+      0x16e5540  fsub     s0, s9, s0
+      0x16e5544  str      s0, [x19, #0xac]
+   >> 0x16e5548  ldr      s0, [x20, #0x124]
+      0x16e554c  ldr      s1, [x21, #0x78]
+      0x16e5550  fmul     s3, s0, s1
+
+0x1d53c60  ldr  score 2  str #0xac before (tangent)
+      0x1d53c58  str      s0, [x19, #0xac]
+      0x1d53c5c  fcsel    s9, s0, s10, gt
+   >> 0x1d53c60  ldr      s0, [x8, #0xc0c]
+      0x1d53c64  ldr      x21, [x29, #0x20]
+      0x1d53c68  ldr      w24, [x29, #0x10]
+
+0x3c82bf8  ldr  score 2  str #0xac before (tangent)
+      0x3c82bf0  ldr      x8, [x19, #0xa8]
+      0x3c82bf4  str      s6, [x8, #0xac]
+   >> 0x3c82bf8  ldr      s6, [x0, #0x18]
+      0x3c82bfc  ldr      x8, [x19, #0xa8]
+      0x3c82c00  fmul     s6, s0, s6
+
+0x22599c  ldr  score 1  str #0xac (tangent)
+      0x225994  stp      x0, xzr, [x23, #0x110]
+      0x225998  str      s0, [x23, #0xa8]
+   >> 0x22599c  ldr      s0, [sp, #0xa8]
+      0x2259a0  str      s0, [x23, #0xac]
+      0x2259a4  ldr      s0, [sp, #0xdc]
+
+0x240f2c  ldr  score 1  str #0xac (tangent)
+      0x240f24  ldr      x14, [x12, x13]
+      0x240f28  ldr      x14, [x14, x11, lsl #3]
+   >> 0x240f2c  ldr      s0, [x14, #0x12c]
+      0x240f30  str      s0, [x19, #0xac]
+      0x240f34  ldr      x14, [x12, x13]
+
+0x241000  ldr  score 1  str #0xac (tangent)
+      0x240ff8  mov      w9, #0x12c
+      0x240ffc  str      s0, [x19, #0xa8]
+   >> 0x241000  ldr      s0, [x9]
+      0x241004  mov      w9, #0x130
+      0x241008  str      s0, [x19, #0xac]
+
+0x24105c  ldr  score 1  str #0xac (tangent)
+      0x241054  str      s0, [x19, #0xa8]
+      0x241058  bl       #0x3cb048
+   >> 0x24105c  ldr      s0, [x0, #0x164]
+      0x241060  mov      x0, x19
+      0x241064  str      s0, [x19, #0xac]
+
+0x7fe4a0  ldr  score 1  str #0xac (tangent)
+      0x7fe498  mov      w8, #1
+      0x7fe49c  str      w8, [x19, #0x28]
+   >> 0x7fe4a0  ldr      s0, [x22, #0x270]
+      0x7fe4a4  str      s0, [x19, #0xac]
+      0x7fe4a8  b        #0x7fe170
+
+0x94fa04  fdiv  score 1  str #0xac (tangent)
+      0x94f9fc  str      wzr, [x22, #0xb0]
+      0x94fa00  str      d9, [sp, #0x78]
+   >> 0x94fa04  fdiv     s0, s1, s0
+      0x94fa08  fadd     s1, s0, s8
+      0x94fa0c  str      s1, [x22, #0xac]
+
+0xaa4574  ldr  score 1  str #0xac (tangent)
+      0xaa456c  ldr      s0, [sp, #0x20]
+      0xaa4570  str      s0, [x21, #0xa8]
+   >> 0xaa4574  ldr      s0, [sp, #0x24]
+      0xaa4578  str      s0, [x21, #0xac]
+      0xaa457c  ldr      d0, [sp, #0x28]
+
+0xd2599c  ldr  score 1  str #0xac (tangent)
+      0xd25994  ldr      x8, [x0, #0x118]
+      0xd25998  cbz      x8, #0xd25a34
+   >> 0xd2599c  ldr      s0, [x8, #0x88]
+      0xd259a0  str      s0, [x19, #0xac]
+      0xd259a4  bl       #0xc598c4
+
+0x15ca704  ldr  score 1  str #0xac (tangent)
+      0x15ca6fc  str      s2, [x8, #0x7c]
+      0x15ca700  ldp      s1, s2, [sp, #0x80]
+   >> 0x15ca704  ldr      s3, [sp, #0x88]
+      0x15ca708  strh     w12, [x8, #0xee]
+      0x15ca70c  str      s7, [x8, #0xac]
+
+0x17e7abc  fdiv  score 1  str #0xac (tangent)
+      0x17e7ab4  fadd     s0, s0, s11
+      0x17e7ab8  fadd     s8, s1, s11
+   >> 0x17e7abc  fdiv     s2, s3, s2
+      0x17e7ac0  str      s2, [x19, #0xac]
+      0x17e7ac4  fadd     s9, s2, s11
+
+0x18a31d4  ldr  score 1  str #0xac (tangent)
+      0x18a31cc  ldr      s1, [x0, #0xb0]
+      0x18a31d0  str      s0, [x0, #0xa8]
+   >> 0x18a31d4  ldr      s0, [x1, #4]
+      0x18a31d8  fadd     s0, s0, s2
+      0x18a31dc  str      s0, [x0, #0xac]
+
+0x2319a8c  ldr  score 1  str #0xac (tangent)
+      0x2319a84  ldr      s2, [x21, #0x100]
+      0x2319a88  fmul     s0, s0, s1
+   >> 0x2319a8c  ldr      s1, [x20, #0xac]
+      0x2319a90  fmadd    s0, s0, s2, s1
+      0x2319a94  str      s0, [x20, #0xac]
+
+0x3c82bec  ldr  score 1  str #0xac (tangent)
+      0x3c82be4  ldr      x8, [x19, #0xa8]
+      0x3c82be8  str      s6, [x8, #0xa8]
+   >> 0x3c82bec  ldr      s6, [x19, #0x15c]
+      0x3c82bf0  ldr      x8, [x19, #0xa8]
+      0x3c82bf4  str      s6, [x8, #0xac]
+
+0x4d6d208  ldr  score 1  str #0xac (tangent)
+      0x4d6d200  ldr      s0, [x0, #0xd0]
+      0x4d6d204  str      s0, [x1, #0xa8]
+   >> 0x4d6d208  ldr      s0, [x0, #0xd4]
+      0x4d6d20c  str      s0, [x1, #0xac]
+      0x4d6d210  ldr      x8, [x0, #0xd8]
+
+# 37 candidate(s) shown of 131726 fdiv/ldr

@@ -1,0 +1,15 @@
+{
+  "format": 1,
+  "name": "Tears of the Kingdom — Duo camera",
+  "game": "The Legend of Zelda: Tears of the Kingdom",
+  "title_id": "0100F2C0115B6000",
+  "version": "1.4.3",
+  "main_build_id": "277178b7dba1b6d4949a84778d4abc58",
+  "camera": {
+    "sites": ["0x628c74", "0xb43460", "0x1ff04f4", "0x253fbb0"],
+    "const": null
+  },
+  "canvas": [],
+  "author": "nxnative-duo",
+  "checked": "Camera update, camera setup and both viewport aspect sites (runtime stubs on the frame-step state page). Checked on an iPhone Duo in October 2026 by eye: the world keeps its proportions in Stretch; HUD elements remain 1.25x tall."
+}

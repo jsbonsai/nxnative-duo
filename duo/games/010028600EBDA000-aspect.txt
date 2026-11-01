@@ -1,0 +1,54 @@
+# /path/to/work/010028600EBDA000_build/extract/v262144/ExeFS/main
+# build id 891687f016a18f1773d4a88ebf8a973c
+# text 0x9c4a80 bytes, 2560672 instructions, 36622 fdiv, 16:9 constants at ['0xda6934']
+
+0x6aab98  fdiv  score 3  str #0xb0 (projection aspect)
+      0x6aab90  ldr      s1, [x8, #0x8f0]
+      0x6aab94  add      x8, x23, #0xbc
+   >> 0x6aab98  fdiv     s0, s0, s1
+      0x6aab9c  str      s0, [x23, #0xb0]
+      0x6aaba0  ldr      s0, [x21, #0x70]
+
+0x90772c  ldr  score 3  str #0xb0 (projection aspect)
+      0x907724  fmov     s1, #-1.50000000
+      0x907728  fmul     s0, s0, s1
+   >> 0x90772c  ldr      s1, [x19, #0xb0]
+      0x907730  fadd     s0, s1, s0
+      0x907734  str      s0, [x19, #0xb0]
+
+0x907848  ldr  score 3  str #0xb0 (projection aspect)
+      0x907840  fmov     s9, wzr
+      0x907844  fadd     s1, s0, s9
+   >> 0x907848  ldr      s0, [x19, #0xb8]
+      0x90784c  fmov     s2, #3.00000000
+      0x907850  str      s1, [x19, #0xb0]
+
+0x9bc3f8  ldr  score 3  str #0xb0 (projection aspect)
+      0x9bc3f0  mov      v1.16b, v0.16b
+      0x9bc3f4  cbz      w9, #0x9bc400
+   >> 0x9bc3f8  ldr      s1, [x8, #0xa8]
+      0x9bc3fc  ucvtf    s1, s1
+      0x9bc400  str      s1, [x0, #0xb0]
+
+0x291c70  ldr  score 2  str #0xac before (tangent)
+      0x291c68  fadd     s0, s0, s1
+      0x291c6c  str      s0, [x19, #0xac]
+   >> 0x291c70  ldr      s0, [x21, #0xb0]
+      0x291c74  ldr      s1, [x20, #0xb0]
+      0x291c78  fmul     s0, s9, s0
+
+0x291c74  ldr  score 2  str #0xac before (tangent)
+      0x291c6c  str      s0, [x19, #0xac]
+      0x291c70  ldr      s0, [x21, #0xb0]
+   >> 0x291c74  ldr      s1, [x20, #0xb0]
+      0x291c78  fmul     s0, s9, s0
+      0x291c7c  fmul     s1, s1, s8
+
+0x907708  ldr  score 1  str #0xac (tangent)
+      0x907700  bl       #0x86a1a0
+      0x907704  tbz      w0, #0, #0x907748
+   >> 0x907708  ldr      s0, [x19, #0xac]
+      0x90770c  fadd     s0, s13, s0
+      0x907710  str      s0, [x19, #0xac]
+
+# 7 candidate(s) shown of 36622 fdiv/ldr

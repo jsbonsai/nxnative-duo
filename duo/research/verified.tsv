@@ -1,0 +1,10 @@
+# Duo camera patches checked ON THE DEVICE, per main build ID. duo/research/games.tsv says what is patched; this file says what was seen to work.
+# A row needs both: the build's patched_*/main.cuts.tsv shows its `duo aspect` line(s), and a device frame was judged — `measured` (a number,
+# e.g. NCC against the unpatched frame, duo/design/aspect.md §5) or `inspected` (a known-round/known-square object looked right, after the
+# same object looked wrong without the patch). Builders (bin/duo, Duo Builder) turn the Duo camera on by default only for rows here.
+# Columns: main build ID, evidence, date, note
+891687f016a18f1773d4a88ebf8a973c	measured	2026-10-30	Super Mario 3D World 1.2.? — NCC 0.656 crop-equivalent vs 0.189 stretched; owner: "Mario is the right size"
+cd6e42aee7934f4d8393cd43893ae25e	inspected	2026-10-30	Super Mario Bros. Wonder 1.0.0 — cuts: s0 = 1.42152 at 0x10f47c; level 1 world proportions on device (HUD still 1.25x tall)
+a071148fe679e76dcdb297c7a7a6013d	inspected	2026-10-30	Super Mario Galaxy 2 — cuts at 0x2fe2e0, 0x2fe5f8; file-select mushrooms round (they were flat with the wrong third site)
+277178b7dba1b6d4949a84778d4abc58	inspected	2026-10-29	Tears of the Kingdom 1.4.3 — runtime stubs; checked on device in the earlier session (duo/design/aspect.md)
+# 2026-10-30 DRAGON QUEST VII Reimagined 1.2.0 (f7ec03e4…): FAILED on the Duo — owner switched Letterbox -> Stretch in a 3D scene, characters got taller. Sites 0x1038130,~0x10384bc are wrong or incomplete.
